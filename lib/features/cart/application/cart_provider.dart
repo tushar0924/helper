@@ -1,117 +1,170 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class CartItem {
-  const CartItem({
-    required this.title,
-    required this.category,
-    required this.price,
-    required this.duration,
-    required this.imageUrl,
-    required this.quantity,
+import '../../auth/application/auth_provider.dart';
+import '../data/cart_repository.dart';
+import '../modal/cart_summary_modal.dart';
+
+class CartState {
+  const CartState({
+    this.isLoading = false,
+    this.isMutating = false,
+    this.summary,
+    this.errorMessage,
   });
 
-  final String title;
-  final String category;
-  final int price;
-  final String duration;
-  final String imageUrl;
-  final int quantity;
+  final bool isLoading;
+  final bool isMutating;
+  final CartSummaryModal? summary;
+  final String? errorMessage;
 
-  CartItem copyWith({
-    String? title,
-    String? category,
-    int? price,
-    String? duration,
-    String? imageUrl,
-    int? quantity,
+  CartState copyWith({
+    bool? isLoading,
+    bool? isMutating,
+    CartSummaryModal? summary,
+    String? errorMessage,
+    bool clearError = false,
   }) {
-    return CartItem(
-      title: title ?? this.title,
-      category: category ?? this.category,
-      price: price ?? this.price,
-      duration: duration ?? this.duration,
-      imageUrl: imageUrl ?? this.imageUrl,
-      quantity: quantity ?? this.quantity,
+    return CartState(
+      isLoading: isLoading ?? this.isLoading,
+      isMutating: isMutating ?? this.isMutating,
+      summary: summary ?? this.summary,
+      errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
     );
   }
 }
 
-class CartController extends StateNotifier<List<CartItem>> {
-  CartController() : super(const <CartItem>[]);
+final cartRepositoryProvider = Provider<CartRepository>((ref) {
+  return CartRepository(ref.read(apiClientProvider));
+});
 
-  void addService({
-    required String title,
-    required String category,
-    required String priceText,
-    required String duration,
-    required String imageUrl,
-  }) {
-    final price = _parsePrice(priceText);
-    final index = state.indexWhere((item) => item.title == title);
-    if (index >= 0) {
-      final updated = [...state];
-      final current = updated[index];
-      updated[index] = current.copyWith(quantity: current.quantity + 1);
-      state = updated;
+class CartController extends StateNotifier<CartState> {
+  CartController(this._repository) : super(const CartState());
+
+  static const int maxQuantity = 5;
+
+  final CartRepository _repository;
+
+  Future<void> loadSummary({bool forceRefresh = false}) async {
+    if (state.isLoading) {
       return;
     }
 
-    state = [
-      ...state,
-      CartItem(
-        title: title,
-        category: category,
-        price: price,
-        duration: duration,
-        imageUrl: imageUrl,
-        quantity: 1,
-      ),
-    ];
+    if (!forceRefresh && state.summary != null) {
+      return;
+    }
+
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      final response = await _repository.getSummary();
+      state = state.copyWith(isLoading: false, summary: response.data);
+    } catch (error) {
+      state = state.copyWith(isLoading: false, errorMessage: error.toString());
+    }
   }
 
-  void increment(String title) {
-    final index = state.indexWhere((item) => item.title == title);
-    if (index < 0) {
+  Future<void> addToCart({required int serviceId, int quantity = 1}) async {
+    if (state.isMutating) {
       return;
     }
 
-    final updated = [...state];
-    final item = updated[index];
-    updated[index] = item.copyWith(quantity: item.quantity + 1);
-    state = updated;
+    if (quantity > maxQuantity) {
+      return;
+    }
+
+    state = state.copyWith(isMutating: true, clearError: true);
+    try {
+      final response = await _repository.addToCart(
+        serviceId: serviceId,
+        quantity: quantity,
+      );
+      state = state.copyWith(isMutating: false, summary: response.data);
+    } catch (error) {
+      state = state.copyWith(isMutating: false, errorMessage: error.toString());
+    }
   }
 
-  void decrement(String title) {
-    final index = state.indexWhere((item) => item.title == title);
-    if (index < 0) {
+  Future<void> updateItem({
+    required int serviceId,
+    required int quantity,
+  }) async {
+    if (state.isMutating) {
       return;
     }
 
-    final updated = [...state];
-    final item = updated[index];
-    if (item.quantity <= 1) {
-      updated.removeAt(index);
-      state = updated;
+    if (quantity < 1 || quantity > maxQuantity) {
       return;
     }
 
-    updated[index] = item.copyWith(quantity: item.quantity - 1);
-    state = updated;
+    state = state.copyWith(isMutating: true, clearError: true);
+    try {
+      final response = await _repository.updateItem(
+        serviceId: serviceId,
+        quantity: quantity,
+      );
+      state = state.copyWith(isMutating: false, summary: response.data);
+    } catch (error) {
+      state = state.copyWith(isMutating: false, errorMessage: error.toString());
+    }
   }
 
-  static int _parsePrice(String priceText) {
-    final onlyDigits = priceText.replaceAll(RegExp(r'[^0-9]'), '');
-    return int.tryParse(onlyDigits) ?? 0;
+  Future<void> incrementByServiceId(int serviceId) async {
+    final current = quantityForServiceId(serviceId);
+    if (current >= maxQuantity) {
+      return;
+    }
+    if (current <= 0) {
+      await addToCart(serviceId: serviceId, quantity: 1);
+      return;
+    }
+    await updateItem(serviceId: serviceId, quantity: current + 1);
+  }
+
+  Future<void> decrementByServiceId(int serviceId) async {
+    final current = quantityForServiceId(serviceId);
+    if (current <= 1) {
+      await updateItem(serviceId: serviceId, quantity: 1);
+      return;
+    }
+    await updateItem(serviceId: serviceId, quantity: current - 1);
+  }
+
+  Future<void> clearCart() async {
+    if (state.isMutating) {
+      return;
+    }
+
+    state = state.copyWith(isMutating: true, clearError: true);
+    try {
+      final response = await _repository.clearCart();
+      state = state.copyWith(isMutating: false, summary: response.data);
+    } catch (error) {
+      state = state.copyWith(isMutating: false, errorMessage: error.toString());
+    }
+  }
+
+  int quantityForServiceId(int serviceId) {
+    final items = state.summary?.items ?? const <CartItemModal>[];
+    for (final item in items) {
+      if (item.serviceId == serviceId) {
+        return item.quantity;
+      }
+    }
+    return 0;
+  }
+
+  bool isAddDisabled(int serviceId) {
+    return quantityForServiceId(serviceId) >= maxQuantity || state.isMutating;
   }
 }
 
-final cartProvider = StateNotifierProvider<CartController, List<CartItem>>(
-  (ref) => CartController(),
-);
+final cartProvider = StateNotifierProvider<CartController, CartState>((ref) {
+  return CartController(ref.read(cartRepositoryProvider));
+});
 
-int cartQuantityForTitle(List<CartItem> items, String title) {
+int cartQuantityForServiceId(CartState state, int serviceId) {
+  final items = state.summary?.items ?? const <CartItemModal>[];
   for (final item in items) {
-    if (item.title == title) {
+    if (item.serviceId == serviceId) {
       return item.quantity;
     }
   }

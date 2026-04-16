@@ -1,19 +1,23 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../application/auth_provider.dart';
 import '../../../routes/app_router.dart';
 
-class OtpScreen extends StatefulWidget {
+class OtpScreen extends ConsumerStatefulWidget {
   const OtpScreen({super.key});
 
   @override
-  State<OtpScreen> createState() => _OtpScreenState();
+  ConsumerState<OtpScreen> createState() => _OtpScreenState();
 }
 
-class _OtpScreenState extends State<OtpScreen> {
-  final List<TextEditingController> _controllers =
-      List.generate(4, (_) => TextEditingController());
+class _OtpScreenState extends ConsumerState<OtpScreen> {
+  final List<TextEditingController> _controllers = List.generate(
+    4,
+    (_) => TextEditingController(),
+  );
   final List<FocusNode> _focusNodes = List.generate(4, (_) => FocusNode());
 
   int _resendSeconds = 25;
@@ -59,23 +63,49 @@ class _OtpScreenState extends State<OtpScreen> {
     super.dispose();
   }
 
-  void _verifyAndContinue() {
+  Future<void> _verifyAndContinue(String? phone) async {
     final otp = _controllers.map((c) => c.text).join();
     if (otp.length < 4) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter the complete OTP')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Enter the complete OTP')));
       return;
     }
 
-    Navigator.of(context).pushNamedAndRemoveUntil(
-      AppRouter.home,
-      (route) => false,
-    );
+    if (phone == null || phone.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Phone number is missing')));
+      return;
+    }
+
+    try {
+      final response = await ref
+          .read(authControllerProvider.notifier)
+          .verifyOtp(phone: phone, otp: otp);
+
+      if (!mounted) {
+        return;
+      }
+
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        response.isNewUser ? AppRouter.signup : AppRouter.home,
+        (route) => false,
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final authState = ref.watch(authControllerProvider);
     final routeArgs = ModalRoute.of(context)?.settings.arguments;
     final phone = routeArgs is String ? routeArgs : null;
 
@@ -215,7 +245,7 @@ class _OtpScreenState extends State<OtpScreen> {
                       const SizedBox(height: 20),
                       Center(
                         child: GestureDetector(
-                          onTap: _resendOtp,
+                          onTap: authState.isLoading ? null : _resendOtp,
                           child: Text(
                             _resendSeconds > 0
                                 ? 'Resend OTP in ${_resendSeconds}s'
@@ -234,20 +264,33 @@ class _OtpScreenState extends State<OtpScreen> {
                         width: double.infinity,
                         height: 52,
                         child: ElevatedButton.icon(
-                          onPressed: _verifyAndContinue,
+                          onPressed: authState.isLoading
+                              ? null
+                              : () => _verifyAndContinue(phone),
                           icon: const Icon(
                             Icons.verified_outlined,
                             size: 18,
                             color: Colors.white,
                           ),
-                          label: const Text(
-                            'Verify & Login',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.white,
-                            ),
-                          ),
+                          label: authState.isLoading
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : const Text(
+                                  'Verify & Login',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.white,
+                                  ),
+                                ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF7FA6B5),
                             elevation: 0,
@@ -260,9 +303,11 @@ class _OtpScreenState extends State<OtpScreen> {
                       const SizedBox(height: 20),
                       Center(
                         child: GestureDetector(
-                          onTap: () {
-                            Navigator.pop(context);
-                          },
+                          onTap: authState.isLoading
+                              ? null
+                              : () {
+                                  Navigator.pop(context);
+                                },
                           child: const Text(
                             'Change Phone Number?',
                             style: TextStyle(

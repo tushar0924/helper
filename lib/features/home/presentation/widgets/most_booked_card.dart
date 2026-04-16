@@ -6,12 +6,14 @@ import '../../../cart/application/cart_provider.dart';
 class MostBookedCard extends ConsumerWidget {
   const MostBookedCard({
     super.key,
+    this.serviceId,
     required this.title,
     required this.price,
     required this.rating,
     required this.imageUrl,
   });
 
+  final int? serviceId;
   final String title;
   final String price;
   final String rating;
@@ -19,7 +21,13 @@ class MostBookedCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final quantity = cartQuantityForTitle(ref.watch(cartProvider), title);
+    final cartState = ref.watch(cartProvider);
+    final quantity = serviceId == null
+        ? 0
+        : cartQuantityForServiceId(cartState, serviceId!);
+    final disableAdd = serviceId == null
+        ? true
+        : ref.read(cartProvider.notifier).isAddDisabled(serviceId!);
 
     return Container(
       width: 134,
@@ -88,17 +96,37 @@ class MostBookedCard extends ConsumerWidget {
               const Spacer(),
               _CartActionButton(
                 quantity: quantity,
+                disableIncrement: disableAdd,
                 onAdd: () {
-                  ref.read(cartProvider.notifier).addService(
-                        title: title,
-                        category: 'Home Services',
-                        priceText: price,
-                        duration: '1 hr',
-                        imageUrl: imageUrl,
-                      );
+                  if (serviceId == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Service id not available for this item'),
+                      ),
+                    );
+                    return;
+                  }
+
+                  ref
+                      .read(cartProvider.notifier)
+                      .addToCart(serviceId: serviceId!, quantity: 1);
                 },
-                onIncrement: () => ref.read(cartProvider.notifier).increment(title),
-                onDecrement: () => ref.read(cartProvider.notifier).decrement(title),
+                onIncrement: () {
+                  if (serviceId == null) {
+                    return;
+                  }
+                  ref
+                      .read(cartProvider.notifier)
+                      .incrementByServiceId(serviceId!);
+                },
+                onDecrement: () {
+                  if (serviceId == null) {
+                    return;
+                  }
+                  ref
+                      .read(cartProvider.notifier)
+                      .decrementByServiceId(serviceId!);
+                },
               ),
             ],
           ),
@@ -111,12 +139,14 @@ class MostBookedCard extends ConsumerWidget {
 class _CartActionButton extends StatelessWidget {
   const _CartActionButton({
     required this.quantity,
+    required this.disableIncrement,
     required this.onAdd,
     required this.onIncrement,
     required this.onDecrement,
   });
 
   final int quantity;
+  final bool disableIncrement;
   final VoidCallback onAdd;
   final VoidCallback onIncrement;
   final VoidCallback onDecrement;
@@ -125,7 +155,7 @@ class _CartActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     if (quantity == 0) {
       return InkWell(
-        onTap: onAdd,
+        onTap: disableIncrement ? null : onAdd,
         borderRadius: BorderRadius.circular(7),
         child: Container(
           height: 21,
@@ -185,7 +215,7 @@ class _CartActionButton extends StatelessWidget {
             ),
           ),
           InkWell(
-            onTap: onIncrement,
+            onTap: disableIncrement ? null : onIncrement,
             borderRadius: BorderRadius.circular(7),
             child: const SizedBox(
               width: 20,

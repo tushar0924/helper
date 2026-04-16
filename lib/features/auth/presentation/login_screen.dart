@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../application/auth_provider.dart';
 import '../../../routes/app_router.dart';
 
-class LoginScreen extends StatefulWidget {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends ConsumerState<LoginScreen> {
   final TextEditingController _phoneController = TextEditingController();
 
   @override
@@ -18,7 +20,7 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _goToOtp() {
+  Future<void> _goToOtp() async {
     final phone = _phoneController.text.trim();
     if (phone.length != 10) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -27,11 +29,28 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    Navigator.of(context).pushNamed(AppRouter.otp, arguments: phone);
+    try {
+      await ref.read(authControllerProvider.notifier).sendLoginOtp(phone);
+      if (!mounted) {
+        return;
+      }
+
+      Navigator.of(context).pushNamed(AppRouter.otp, arguments: phone);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final authState = ref.watch(authControllerProvider);
+
     return Scaffold(
       backgroundColor: const Color(0xFF2C2C2C),
       body: SafeArea(
@@ -127,7 +146,9 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                               decoration: BoxDecoration(
                                 border: Border(
-                                  right: BorderSide(color: Colors.grey.shade300),
+                                  right: BorderSide(
+                                    color: Colors.grey.shade300,
+                                  ),
                                 ),
                               ),
                               child: const Text(
@@ -171,7 +192,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         width: double.infinity,
                         height: 50,
                         child: ElevatedButton(
-                          onPressed: _goToOtp,
+                          onPressed: authState.isLoading ? null : _goToOtp,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF7AAAB5),
                             shape: RoundedRectangleBorder(
@@ -179,14 +200,25 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             elevation: 0,
                           ),
-                          child: const Text(
-                            'Send OTP',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
+                          child: authState.isLoading
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : const Text(
+                                  'Send OTP',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -204,7 +236,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             TextButton(
                               onPressed: () {
-                                Navigator.of(context).pushNamed(AppRouter.signup);
+                                Navigator.of(
+                                  context,
+                                ).pushNamed(AppRouter.signup);
                               },
                               style: TextButton.styleFrom(
                                 padding: EdgeInsets.zero,

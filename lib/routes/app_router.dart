@@ -43,10 +43,15 @@ class AppRouter {
             ),
         serviceDetail: (context) {
           final args =
-              ModalRoute.of(context)?.settings.arguments as Map<String, String>?;
-          final title = args?['title'] ?? 'Service';
-          final image = args?['image'] ?? '';
+              ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+          final rawCategoryId = args == null ? null : args['categoryId'];
+          final categoryId = rawCategoryId is int
+            ? rawCategoryId
+            : int.tryParse(rawCategoryId?.toString() ?? '') ?? 0;
+          final title = args?['title']?.toString() ?? 'Service';
+          final image = args?['image']?.toString() ?? '';
           return ServiceDetailScreen(
+            categoryId: categoryId,
             serviceTitle: title,
             serviceImage: image,
           );

@@ -1,17 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../application/category_provider.dart';
 import 'home_screen.dart';
 import 'widgets/main_bottom_bar.dart';
 
-class MainNavigationScreen extends StatefulWidget {
+class MainNavigationScreen extends ConsumerStatefulWidget {
   const MainNavigationScreen({super.key});
 
   @override
-  State<MainNavigationScreen> createState() => _MainNavigationScreenState();
+  ConsumerState<MainNavigationScreen> createState() =>
+      _MainNavigationScreenState();
 }
 
-class _MainNavigationScreenState extends State<MainNavigationScreen> {
+class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
   MainTab _selectedTab = MainTab.helper;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() {
+      ref.read(categoryControllerProvider.notifier).loadCategories();
+    });
+  }
 
   Widget _buildCurrentTab() {
     switch (_selectedTab) {

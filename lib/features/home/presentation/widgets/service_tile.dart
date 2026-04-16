@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../../app/widgets/skeleton_shimmer.dart';
+
 class ServiceTile extends StatelessWidget {
   const ServiceTile({
     super.key,
@@ -37,6 +39,14 @@ class ServiceTile extends StatelessWidget {
                   child: Image.network(
                     imageUrl,
                     fit: BoxFit.cover,
+                    filterQuality: FilterQuality.low,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) {
+                        return child;
+                      }
+
+                      return const _TileImageSkeleton();
+                    },
                     errorBuilder: (context, error, stackTrace) {
                       return const SizedBox.shrink();
                     },
@@ -60,6 +70,18 @@ class ServiceTile extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _TileImageSkeleton extends StatelessWidget {
+  const _TileImageSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SkeletonShimmerBox(
+      borderRadius: BorderRadius.all(Radius.circular(2)),
+      baseColor: Color(0xFFE5EAF0),
     );
   }
 }

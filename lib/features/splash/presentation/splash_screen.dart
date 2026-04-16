@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../auth/application/auth_provider.dart';
 import '../../../routes/app_router.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
@@ -22,11 +23,15 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   Future<void> _bootstrap() async {
     await Future<void>.delayed(const Duration(milliseconds: 900));
 
+    final isLoggedIn = await ref.read(sessionManagerProvider).isLoggedIn;
+
     if (!mounted) {
       return;
     }
 
-    Navigator.of(context).pushReplacementNamed(AppRouter.home);
+    Navigator.of(
+      context,
+    ).pushReplacementNamed(isLoggedIn ? AppRouter.home : AppRouter.login);
   }
 
   @override

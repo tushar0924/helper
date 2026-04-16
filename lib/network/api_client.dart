@@ -1,0 +1,184 @@
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+
+import '../session/session_manager.dart';
+import 'api_endpoint.dart';
+
+class ApiClient {
+  ApiClient(this._sessionManager, {http.Client? client})
+    : _client = client ?? http.Client();
+
+  final http.Client _client;
+  final SessionManager _sessionManager;
+
+  Future<Map<String, dynamic>> getJson(
+    String path, {
+    bool requiresAuth = false,
+    Map<String, String>? headers,
+  }) async {
+    final resolvedHeaders = await _headers(
+      requiresAuth: requiresAuth,
+      headers: headers,
+    );
+    final uri = _uriFor(path);
+    _logRequest(method: 'GET', uri: uri, headers: resolvedHeaders);
+
+    final response = await _client.get(uri, headers: resolvedHeaders);
+    _logResponse(method: 'GET', uri: uri, response: response);
+    return _decodeResponse(response);
+  }
+
+  Future<Map<String, dynamic>> postJson(
+    String path, {
+    Map<String, dynamic>? body,
+    bool requiresAuth = false,
+    Map<String, String>? headers,
+  }) async {
+    final resolvedHeaders = await _headers(
+      requiresAuth: requiresAuth,
+      headers: headers,
+    );
+    final uri = _uriFor(path);
+    final requestBody = jsonEncode(body ?? const <String, dynamic>{});
+    _logRequest(
+      method: 'POST',
+      uri: uri,
+      headers: resolvedHeaders,
+      body: requestBody,
+    );
+
+    final response = await _client.post(
+      uri,
+      headers: resolvedHeaders,
+      body: requestBody,
+    );
+    _logResponse(method: 'POST', uri: uri, response: response);
+    return _decodeResponse(response);
+  }
+
+  Future<Map<String, dynamic>> deleteJson(
+    String path, {
+    Map<String, dynamic>? body,
+    bool requiresAuth = false,
+    Map<String, String>? headers,
+  }) async {
+    final resolvedHeaders = await _headers(
+      requiresAuth: requiresAuth,
+      headers: headers,
+    );
+    final uri = _uriFor(path);
+    final requestBody = body == null ? null : jsonEncode(body);
+    _logRequest(
+      method: 'DELETE',
+      uri: uri,
+      headers: resolvedHeaders,
+      body: requestBody,
+    );
+
+    final response = await _client.delete(
+      uri,
+      headers: resolvedHeaders,
+      body: requestBody,
+    );
+    _logResponse(method: 'DELETE', uri: uri, response: response);
+    return _decodeResponse(response);
+  }
+
+  Uri _uriFor(String path) {
+    return Uri.parse(ApiEndpoint.baseUrl).resolve(path);
+  }
+
+  Future<Map<String, String>> _headers({
+    required bool requiresAuth,
+    Map<String, String>? headers,
+  }) async {
+    final resolvedHeaders = <String, String>{
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      if (headers != null) ...headers,
+    };
+
+    if (requiresAuth) {
+      final token = await _sessionManager.accessToken;
+      if (token != null && token.isNotEmpty) {
+        resolvedHeaders['Authorization'] = 'Bearer $token';
+      }
+    }
+
+    return resolvedHeaders;
+  }
+
+  Map<String, dynamic> _decodeResponse(http.Response response) {
+    Object? decoded;
+    if (response.body.isNotEmpty) {
+      try {
+        decoded = jsonDecode(response.body);
+      } on FormatException {
+        decoded = response.body;
+      }
+    }
+
+    decoded ??= const <String, dynamic>{};
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+
+      return <String, dynamic>{'data': decoded};
+    }
+
+    final message = decoded is Map<String, dynamic>
+        ? decoded['message']?.toString()
+        : decoded is String
+        ? decoded
+        : null;
+    throw ApiException(
+      message: message ?? 'Request failed with status ${response.statusCode}',
+      statusCode: response.statusCode,
+      responseBody: response.body,
+    );
+  }
+
+  void _logRequest({
+    required String method,
+    required Uri uri,
+    required Map<String, String> headers,
+    String? body,
+  }) {
+    final buffer = StringBuffer()
+      ..writeln('[API][REQUEST] $method $uri')
+      ..writeln('[API][REQUEST][HEADERS] $headers');
+
+    if (body != null) {
+      buffer.writeln('[API][REQUEST][BODY] $body');
+    }
+
+    print(buffer.toString());
+  }
+
+  void _logResponse({
+    required String method,
+    required Uri uri,
+    required http.Response response,
+  }) {
+    final buffer = StringBuffer()
+      ..writeln('[API][RESPONSE] $method $uri')
+      ..writeln('[API][RESPONSE][STATUS] ${response.statusCode}')
+      ..writeln('[API][RESPONSE][BODY] ${response.body}');
+
+    print(buffer.toString());
+  }
+}
+
+class ApiException implements Exception {
+  ApiException({required this.message, this.statusCode, this.responseBody});
+
+  final String message;
+  final int? statusCode;
+  final String? responseBody;
+
+  @override
+  String toString() => message;
+}
