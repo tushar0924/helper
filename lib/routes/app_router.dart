@@ -28,47 +28,50 @@ class AppRouter {
   static const String chooseRole = '/choose-role';
 
   static Map<String, WidgetBuilder> routes() => {
-        splash: (_) => const SplashScreen(),
-        login: (_) => const LoginScreen(),
-        signup: (_) => const SignupScreen(),
-        otp: (_) => const OtpScreen(),
-        home: (_) => const MainNavigationScreen(),
-        homeComingSoon: (_) => const ComingSoonScreen(
-              selectedTab: MainTab.home,
-              pageLabel: 'Home',
-            ),
-        kiranaComingSoon: (_) => const ComingSoonScreen(
-              selectedTab: MainTab.kirana,
-              pageLabel: 'Kirana4U',
-            ),
-        serviceDetail: (context) {
-          final args =
-              ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-          final rawCategoryId = args == null ? null : args['categoryId'];
-          final categoryId = rawCategoryId is int
-            ? rawCategoryId
-            : int.tryParse(rawCategoryId?.toString() ?? '') ?? 0;
-          final title = args?['title']?.toString() ?? 'Service';
-          final image = args?['image']?.toString() ?? '';
-          return ServiceDetailScreen(
-            categoryId: categoryId,
-            serviceTitle: title,
-            serviceImage: image,
-          );
-        },
-        serviceViewDetail: (context) {
-          final args =
-              ModalRoute.of(context)?.settings.arguments as Map<String, String>?;
-          final title = args?['title'] ?? 'Service';
-          final image = args?['image'] ?? '';
-          final price = args?['price'] ?? '₹699';
-          return ServiceViewDetailScreen(
-            serviceTitle: title,
-            serviceImage: image,
-            price: price,
-          );
-        },
-        cart: (_) => const CartScreen(),
-        chooseRole: (_) => const ChooseRoleScreen(),
-      };
+    splash: (_) => const SplashScreen(),
+    login: (_) => const LoginScreen(),
+    signup: (_) => const SignupScreen(),
+    otp: (_) => const OtpScreen(),
+    home: (_) => const MainNavigationScreen(),
+    homeComingSoon: (_) =>
+        const ComingSoonScreen(selectedTab: MainTab.home, pageLabel: 'Home'),
+    kiranaComingSoon: (_) => const ComingSoonScreen(
+      selectedTab: MainTab.kirana,
+      pageLabel: 'Kirana4U',
+    ),
+    serviceDetail: (context) {
+      final args =
+          ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+      final rawCategoryId = args == null ? null : args['categoryId'];
+      final categoryId = rawCategoryId is int
+          ? rawCategoryId
+          : int.tryParse(rawCategoryId?.toString() ?? '') ?? 0;
+      final title = args?['title']?.toString() ?? 'Service';
+      final image = args?['image']?.toString() ?? '';
+      return ServiceDetailScreen(
+        categoryId: categoryId,
+        serviceTitle: title,
+        serviceImage: image,
+      );
+    },
+    serviceViewDetail: (context) {
+      final args =
+          ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+      final rawServiceId = args == null ? null : args['serviceId'];
+      final serviceId = rawServiceId is int
+          ? rawServiceId
+          : int.tryParse(rawServiceId?.toString() ?? '') ?? 0;
+      final title = args?['title']?.toString() ?? 'Service';
+      final image = args?['image']?.toString() ?? '';
+      final price = args?['price']?.toString() ?? '₹699';
+      return ServiceViewDetailScreen(
+        serviceId: serviceId,
+        serviceTitle: title,
+        serviceImage: image,
+        price: price,
+      );
+    },
+    cart: (_) => const CartScreen(),
+    chooseRole: (_) => const ChooseRoleScreen(),
+  };
 }

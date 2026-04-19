@@ -1,5 +1,6 @@
 import '../../../network/api_client.dart';
 import '../../../network/api_endpoint.dart';
+import '../modal/available_coupons_modal.dart';
 import '../modal/cart_add_response_modal.dart';
 import '../modal/cart_clear_response_modal.dart';
 import '../modal/cart_summary_response_modal.dart';
@@ -52,5 +53,14 @@ class CartRepository {
     );
 
     return CartClearResponseModal.fromJson(response);
+  }
+
+  Future<AvailableCouponsModal> getAvailableCoupons() async {
+    final response = await _apiClient.getJson(
+      CartApiEndpoint.availableCoupons,
+      requiresAuth: true,
+    );
+
+    return AvailableCouponsModal.fromJson(response);
   }
 }

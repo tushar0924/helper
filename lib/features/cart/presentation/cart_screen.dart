@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../application/cart_provider.dart';
 import '../modal/cart_summary_modal.dart';
+import 'widgets/apply_coupon_bottom_sheet.dart';
+import 'widgets/select_slot_screen.dart';
 
 class CartScreen extends ConsumerStatefulWidget {
   const CartScreen({super.key});
@@ -98,21 +100,24 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                 child: Column(
                   children: [
                     if (items.isEmpty)
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: const Text(
-                          'No services added yet.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Color(0xFF6B7280),
-                            fontWeight: FontWeight.w500,
-                          ),
+                      _SimpleTile(
+                        child: Column(
+                          children: [
+                            const Text(
+                              'No services added yet.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Color(0xFF6B7280),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            FilledButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              child: const Text('Continue browsing'),
+                            ),
+                          ],
                         ),
                       ),
                     ...items.map(
@@ -121,47 +126,82 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                         child: _CartServiceTile(item: item),
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
+                    _ActionCard(
+                      icon: Icons.add_box_outlined,
+                      title: 'Add more services',
+                      isPrimary: false,
+                      onTap: () => Navigator.of(context).pop(),
+                    ),
+                    const SizedBox(height: 10),
                     _SimpleTile(
-                      child: Row(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Icon(
-                            Icons.location_on,
-                            color: Color(0xFF0097D5),
-                            size: 20,
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.location_on,
+                                color: Color(0xFF0EA5E9),
+                                size: 18,
+                              ),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'Service Address',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                              const Spacer(),
+                              TextButton(
+                                onPressed: () => _showComingSoonSheet(
+                                  context,
+                                  title: 'Change address',
+                                  message:
+                                      'Address selection is not connected yet.',
+                                ),
+                                child: const Text('Change'),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 8),
-                          const Text(
-                            'Service Address',
-                            style: TextStyle(
-                              fontSize: 20,
+                          const SizedBox(height: 6),
+                          Text(
+                            summary.address?.label ?? 'Not selected',
+                            style: const TextStyle(
+                              fontSize: 14,
                               fontWeight: FontWeight.w700,
                               color: Color(0xFF0F172A),
                             ),
                           ),
-                          const Spacer(),
+                          const SizedBox(height: 4),
                           Text(
-                            summary.address?.label ?? 'Not selected',
+                            summary.address != null
+                                ? '${summary.address!.address}, ${summary.address!.city} - ${summary.address!.pinCode}'
+                                : 'Select an address for delivery and service execution',
                             style: const TextStyle(
                               fontSize: 12,
-                              color: Color(0xFF2563EB),
-                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF6B7280),
+                              height: 1.35,
                             ),
                           ),
                         ],
                       ),
                     ),
-                    if (summary.address != null)
-                      _SimpleTile(
-                        child: Text(
-                          '${summary.address!.address}, ${summary.address!.city} - ${summary.address!.pinCode}',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: Color(0xFF6B7280),
-                            height: 1.35,
+                    const SizedBox(height: 10),
+                    _ActionCard(
+                      icon: Icons.discount_outlined,
+                      title: 'Apply Coupon',
+                      isPrimary: false,
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const ApplyCouponScreen(),
                           ),
-                        ),
-                      ),
+                        );
+                      },
+                    ),
                     const SizedBox(height: 10),
                     _SimpleTile(
                       child: Column(
@@ -190,10 +230,9 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                             valueColor: const Color(0xFF16A34A),
                           ),
                           _billRow(
-                            'Platform Fee',
-                            formatInr(summary.pricing.platformFee),
+                            'Tax & fee',
+                            formatInr(summary.pricing.taxAndFee),
                           ),
-                          _billRow('GST', formatInr(summary.pricing.gst)),
                           const Divider(height: 24, color: Color(0xFFE5E7EB)),
                           _billRow(
                             'Total Amount',
@@ -207,6 +246,31 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                 ),
               ),
             ),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+        child: SizedBox(
+          height: 54,
+          child: FilledButton(
+            onPressed: items.isEmpty
+                ? null
+                : () => showSelectSlotBottomSheet(context),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF0B1F3A),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: const Text(
+              'Select a slot',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -238,6 +302,125 @@ class _CartScreenState extends ConsumerState<CartScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+void _showComingSoonSheet(
+  BuildContext context, {
+  required String title,
+  required String message,
+}) {
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: Colors.white,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (context) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD1D5DB),
+                  borderRadius: BorderRadius.circular(100),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              style: const TextStyle(
+                fontSize: 13,
+                height: 1.4,
+                color: Color(0xFF475569),
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () => Navigator.of(context).pop(),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF0B1F3A),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text('Close'),
+              ),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+class _ActionCard extends StatelessWidget {
+  const _ActionCard({
+    required this.icon,
+    required this.title,
+    required this.isPrimary,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final bool isPrimary;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isPrimary
+                ? const Color(0xFF0B1F3A)
+                : const Color(0xFFD1D5DB),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: const Color(0xFF0EA5E9), size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Color(0xFF94A3B8)),
+          ],
+        ),
       ),
     );
   }

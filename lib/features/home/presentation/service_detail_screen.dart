@@ -526,6 +526,7 @@ class _ServiceCard extends ConsumerWidget {
                             Navigator.of(context).pushNamed(
                               AppRouter.serviceViewDetail,
                               arguments: {
+                                'serviceId': item.id,
                                 'title': item.name,
                                 'image': item.imageUrl,
                                 'price': item.formattedPrice,

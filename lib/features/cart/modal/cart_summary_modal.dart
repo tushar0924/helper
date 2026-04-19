@@ -28,8 +28,7 @@ class CartSummaryModal {
         itemTotal: 0,
         addonTotal: 0,
         discount: 0,
-        platformFee: 0,
-        gst: 0,
+        taxAndFee: 0,
         total: 0,
       ),
       lastUpdatedAt: null,
@@ -63,8 +62,7 @@ class CartSummaryModal {
               itemTotal: 0,
               addonTotal: 0,
               discount: 0,
-              platformFee: 0,
-              gst: 0,
+              taxAndFee: 0,
               total: 0,
             ),
       lastUpdatedAt: DateTime.tryParse(json['lastUpdatedAt']?.toString() ?? ''),
@@ -78,6 +76,8 @@ class CartItemModal {
     required this.name,
     required this.imageUrl,
     required this.priceAtAdded,
+    required this.originalPrice,
+    required this.totalPrice,
     required this.duration,
     required this.quantity,
     required this.addons,
@@ -87,6 +87,8 @@ class CartItemModal {
   final String name;
   final String? imageUrl;
   final int priceAtAdded;
+  final int originalPrice;
+  final int totalPrice;
   final int duration;
   final int quantity;
   final List<Object?> addons;
@@ -98,7 +100,9 @@ class CartItemModal {
       serviceId: _asInt(json['serviceId']),
       name: json['name']?.toString() ?? '',
       imageUrl: json['imageUrl']?.toString(),
-      priceAtAdded: _asInt(json['priceAtAdded']),
+      priceAtAdded: _asInt(json['priceAtAdded'] ?? json['price']),
+      originalPrice: _asInt(json['originalPrice']),
+      totalPrice: _asInt(json['totalPrice']),
       duration: _asInt(json['duration']),
       quantity: _asInt(json['quantity']),
       addons: addonsJson is List ? addonsJson : const <Object?>[],
@@ -157,25 +161,23 @@ class CartPricingModal {
     required this.itemTotal,
     required this.addonTotal,
     required this.discount,
-    required this.platformFee,
-    required this.gst,
+    required this.taxAndFee,
     required this.total,
   });
 
   final int itemTotal;
   final int addonTotal;
   final int discount;
-  final int platformFee;
-  final int gst;
+  final int taxAndFee;
   final int total;
 
   factory CartPricingModal.fromJson(Map<String, dynamic> json) {
+    final taxAndFee = _asInt(json['taxAndFee']);
     return CartPricingModal(
       itemTotal: _asInt(json['itemTotal']),
       addonTotal: _asInt(json['addonTotal']),
       discount: _asInt(json['discount']),
-      platformFee: _asInt(json['platformFee']),
-      gst: _asInt(json['gst']),
+      taxAndFee: taxAndFee,
       total: _asInt(json['total']),
     );
   }
