@@ -56,14 +56,32 @@ class _SelectSlotSheetState extends State<_SelectSlotSheet> {
       ),
       child: Column(
         children: [
-          Expanded(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(6, 6, 6, 2),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(
+                    Icons.close,
+                    size: 20,
+                    color: Color(0xFF6B7280),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Flexible(
+            fit: FlexFit.loose,
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+              padding: const EdgeInsets.fromLTRB(8, 2, 8, 12),
               child: Column(
                 children: [
                   _DateSelectorCard(
                     focusedMonth: _focusedMonth,
                     selectedDate: _selectedDate,
+                    today: DateTime.now(),
                     onMonthChange: (month) {
                       setState(() {
                         _focusedMonth = month;
@@ -72,12 +90,27 @@ class _SelectSlotSheetState extends State<_SelectSlotSheet> {
                     onDateSelected: (date) {
                       setState(() {
                         _selectedDate = date;
+                        if (_selectedTime != null &&
+                            !_isTimeSlotAvailable(
+                              date,
+                              _selectedTime!,
+                              DateTime.now(),
+                            )) {
+                          _selectedTime = null;
+                        }
                       });
                     },
                   ),
                   const SizedBox(height: 10),
                   _TimeSelectorCard(
+                    selectedDate: _selectedDate,
                     selectedTime: _selectedTime,
+                    isSlotEnabled: (time) {
+                      if (_selectedDate == null) {
+                        return false;
+                      }
+                      return _isTimeSlotAvailable(_selectedDate!, time, DateTime.now());
+                    },
                     onTimeSelected: (time) {
                       setState(() {
                         _selectedTime = time;
@@ -90,6 +123,7 @@ class _SelectSlotSheetState extends State<_SelectSlotSheet> {
           ),
           SafeArea(
             top: false,
+            bottom: false,
             minimum: const EdgeInsets.fromLTRB(10, 0, 10, 0),
             child: SizedBox(
               width: double.infinity,
@@ -109,7 +143,7 @@ class _SelectSlotSheetState extends State<_SelectSlotSheet> {
                       },
                 style: ElevatedButton.styleFrom(
                   elevation: 0,
-                  backgroundColor: const Color(0xFF7B8796),
+                  backgroundColor: const Color(0xFF0B1F3A),
                   disabledBackgroundColor: const Color(0xFF8C98A8),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
@@ -130,18 +164,61 @@ class _SelectSlotSheetState extends State<_SelectSlotSheet> {
       ),
     );
   }
+
+  bool _isTimeSlotAvailable(DateTime date, String slot, DateTime now) {
+    final selectedDay = DateTime(date.year, date.month, date.day);
+    final today = DateTime(now.year, now.month, now.day);
+
+    if (selectedDay.isBefore(today)) {
+      return false;
+    }
+
+    if (selectedDay.isAfter(today)) {
+      return true;
+    }
+
+    final slotMinutes = _slotToMinutes(slot);
+    final nowMinutes = now.hour * 60 + now.minute;
+    return slotMinutes > nowMinutes;
+  }
+
+  int _slotToMinutes(String slot) {
+    final pieces = slot.split(' ');
+    if (pieces.length != 2) {
+      return 0;
+    }
+
+    final timeParts = pieces[0].split(':');
+    if (timeParts.length != 2) {
+      return 0;
+    }
+
+    var hour = int.tryParse(timeParts[0]) ?? 0;
+    final minute = int.tryParse(timeParts[1]) ?? 0;
+    final period = pieces[1].toUpperCase();
+
+    if (period == 'PM' && hour != 12) {
+      hour += 12;
+    } else if (period == 'AM' && hour == 12) {
+      hour = 0;
+    }
+
+    return hour * 60 + minute;
+  }
 }
 
 class _DateSelectorCard extends StatelessWidget {
   const _DateSelectorCard({
     required this.focusedMonth,
     required this.selectedDate,
+    required this.today,
     required this.onMonthChange,
     required this.onDateSelected,
   });
 
   final DateTime focusedMonth;
   final DateTime? selectedDate;
+  final DateTime today;
   final ValueChanged<DateTime> onMonthChange;
   final ValueChanged<DateTime> onDateSelected;
 
@@ -235,21 +312,25 @@ class _DateSelectorCard extends StatelessWidget {
             ),
             itemBuilder: (context, index) {
               final day = gridDays[index];
+              final dayOnly = DateTime(day.year, day.month, day.day);
+              final todayOnly = DateTime(today.year, today.month, today.day);
               final isSelected =
                   selectedDate != null &&
                   selectedDate!.year == day.year &&
                   selectedDate!.month == day.month &&
                   selectedDate!.day == day.day;
               final isCurrentMonth = day.month == focusedMonth.month;
+              final isPast = dayOnly.isBefore(todayOnly);
+              final isDisabled = !isCurrentMonth || isPast;
 
               return GestureDetector(
-                onTap: () => onDateSelected(day),
+                onTap: isDisabled ? null : () => onDateSelected(day),
                 child: Center(
                   child: Container(
                     width: 28,
                     height: 28,
                     decoration: BoxDecoration(
-                      color: isSelected
+                      color: isSelected && !isDisabled
                           ? const Color(0xFF0B1F3A)
                           : Colors.transparent,
                       borderRadius: BorderRadius.circular(8),
@@ -259,11 +340,13 @@ class _DateSelectorCard extends StatelessWidget {
                         '${day.day}',
                         style: TextStyle(
                           fontSize: 12,
-                          fontWeight: isSelected
+                            fontWeight: isSelected && !isDisabled
                               ? FontWeight.w600
                               : FontWeight.w500,
-                          color: isSelected
+                            color: isSelected && !isDisabled
                               ? Colors.white
+                              : isDisabled
+                              ? const Color(0xFFB7BEC9)
                               : isCurrentMonth
                               ? const Color(0xFF111827)
                               : const Color(0xFFA0A7B2),
@@ -283,11 +366,15 @@ class _DateSelectorCard extends StatelessWidget {
 
 class _TimeSelectorCard extends StatelessWidget {
   const _TimeSelectorCard({
+    required this.selectedDate,
     required this.selectedTime,
+    required this.isSlotEnabled,
     required this.onTimeSelected,
   });
 
+  final DateTime? selectedDate;
   final String? selectedTime;
+  final bool Function(String time) isSlotEnabled;
   final ValueChanged<String> onTimeSelected;
 
   @override
@@ -323,16 +410,19 @@ class _TimeSelectorCard extends StatelessWidget {
             runSpacing: 8,
             children: _SelectSlotSheetState._timeSlots
                 .map((time) {
-                  final isSelected = selectedTime == time;
+                  final isEnabled = selectedDate != null && isSlotEnabled(time);
+                  final isSelected = selectedTime == time && isEnabled;
                   return GestureDetector(
-                    onTap: () => onTimeSelected(time),
+                    onTap: isEnabled ? () => onTimeSelected(time) : null,
                     child: Container(
                       width: 71,
                       height: 30,
                       decoration: BoxDecoration(
                         color: isSelected
                             ? const Color(0xFF0B1F3A)
-                            : const Color(0xFFE8EBEF),
+                            : isEnabled
+                            ? const Color(0xFFE8EBEF)
+                            : const Color(0xFFF0F3F6),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Center(
@@ -342,7 +432,9 @@ class _TimeSelectorCard extends StatelessWidget {
                             fontSize: 11,
                             color: isSelected
                                 ? Colors.white
-                                : const Color(0xFF111827),
+                                : isEnabled
+                                ? const Color(0xFF111827)
+                                : const Color(0xFFB7BEC9),
                             fontWeight: FontWeight.w500,
                           ),
                         ),

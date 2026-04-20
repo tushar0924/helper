@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../application/cart_provider.dart';
+import '../application/coupon_provider.dart';
+import '../modal/applied_coupons_modal.dart';
 import '../modal/cart_summary_modal.dart';
 import 'widgets/apply_coupon_bottom_sheet.dart';
 import 'widgets/select_slot_screen.dart';
@@ -35,6 +37,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     final state = ref.watch(cartProvider);
     final summary = state.summary ?? CartSummaryModal.empty();
     final items = summary.items;
+    final appliedCouponsAsync = ref.watch(appliedCouponsProvider);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF1F3F6),
@@ -90,6 +93,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
               onRefresh: () {
+                ref.invalidate(appliedCouponsProvider);
                 return ref
                     .read(cartProvider.notifier)
                     .loadSummary(forceRefresh: true);
@@ -190,16 +194,23 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    _ActionCard(
-                      icon: Icons.discount_outlined,
-                      title: 'Apply Coupon',
-                      isPrimary: false,
-                      onTap: () {
-                        Navigator.of(context).push(
+                    _AppliedCouponsCard(
+                      appliedCouponsAsync: appliedCouponsAsync,
+                      summary: summary,
+                      onTapApplyCoupon: () async {
+                        await Navigator.of(context).push(
                           MaterialPageRoute<void>(
                             builder: (_) => const ApplyCouponScreen(),
                           ),
                         );
+                        if (!mounted) {
+                          return;
+                        }
+
+                        ref.invalidate(appliedCouponsProvider);
+                        await ref
+                            .read(cartProvider.notifier)
+                            .loadSummary(forceRefresh: true);
                       },
                     ),
                     const SizedBox(height: 10),
@@ -305,6 +316,188 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       ),
     );
   }
+}
+
+class _AppliedCouponsCard extends StatelessWidget {
+  const _AppliedCouponsCard({
+    required this.appliedCouponsAsync,
+    required this.summary,
+    required this.onTapApplyCoupon,
+  });
+
+  final AsyncValue<AppliedCouponsModal> appliedCouponsAsync;
+  final CartSummaryModal summary;
+  final VoidCallback onTapApplyCoupon;
+
+  @override
+  Widget build(BuildContext context) {
+    final fallbackRows = _fallbackAppliedCouponRows(summary);
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFD1D5DB)),
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            onTap: onTapApplyCoupon,
+            borderRadius: BorderRadius.circular(14),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              child: Row(
+                children: const [
+                  Icon(Icons.discount_outlined, color: Color(0xFF0EA5E9), size: 18),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Apply Coupon',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ),
+                  Icon(Icons.chevron_right, color: Color(0xFF94A3B8)),
+                ],
+              ),
+            ),
+          ),
+          appliedCouponsAsync.when(
+            loading: () {
+              if (fallbackRows.isEmpty) {
+                return const SizedBox.shrink();
+              }
+              return _AppliedCouponRows(messages: fallbackRows);
+            },
+            error: (_, __) {
+              if (fallbackRows.isEmpty) {
+                return const SizedBox.shrink();
+              }
+              return _AppliedCouponRows(messages: fallbackRows);
+            },
+            data: (appliedData) {
+              final rows = appliedData.coupons
+                  .map((coupon) => coupon.message)
+                  .where((message) => message.trim().isNotEmpty)
+                  .toList(growable: false);
+
+              if (rows.isEmpty && fallbackRows.isEmpty) {
+                return const SizedBox.shrink();
+              }
+
+              return _AppliedCouponRows(messages: rows.isEmpty ? fallbackRows : rows);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AppliedCouponRows extends StatelessWidget {
+  const _AppliedCouponRows({required this.messages});
+
+  final List<String> messages;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+      child: Column(
+        children: [
+          const Divider(height: 1, color: Color(0xFFE5E7EB)),
+          const SizedBox(height: 8),
+          ...messages.map(
+            (message) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.discount_outlined,
+                    size: 16,
+                    color: Color(0xFF0EA5E9),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      message,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF0F172A),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Icon(
+                    Icons.check,
+                    size: 14,
+                    color: Color(0xFF16A34A),
+                  ),
+                  const SizedBox(width: 2),
+                  const Text(
+                    'Applied',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF16A34A),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+List<String> _fallbackAppliedCouponRows(CartSummaryModal summary) {
+  final discountAmount = summary.pricing.discount.abs();
+  final coupon = summary.coupon;
+  if (discountAmount <= 0 && coupon is! Map<String, dynamic>) {
+    return const <String>[];
+  }
+
+  var offerText = 'applied coupon';
+  if (coupon is Map<String, dynamic>) {
+    final discountType = coupon['discountType']?.toString().toUpperCase() ?? '';
+    final discountValue = _parseInt(coupon['discountValue']);
+    if (discountType.startsWith('PERCENT') && discountValue > 0) {
+      offerText = 'flat $discountValue% off';
+    } else if (discountValue > 0) {
+      offerText = 'flat ${formatInr(discountValue)} off';
+    }
+  }
+
+  if (discountAmount <= 0 && coupon is Map<String, dynamic>) {
+    final code = coupon['code']?.toString() ?? '';
+    if (code.isNotEmpty) {
+      return <String>['$code applied with $offerText'];
+    }
+    return <String>['Coupon applied with $offerText'];
+  }
+
+  return <String>['${formatInr(discountAmount)} saved with $offerText'];
+}
+
+int _parseInt(Object? value) {
+  if (value is int) {
+    return value;
+  }
+  if (value is num) {
+    return value.toInt();
+  }
+  final cleaned = (value?.toString() ?? '').replaceAll(RegExp(r'[^0-9-]'), '');
+  if (cleaned.isEmpty || cleaned == '-') {
+    return 0;
+  }
+  return int.tryParse(cleaned) ?? 0;
 }
 
 void _showComingSoonSheet(

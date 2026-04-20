@@ -187,7 +187,22 @@ int _asInt(Object? value) {
   if (value is int) {
     return value;
   }
-  return int.tryParse(value?.toString() ?? '') ?? 0;
+  if (value is num) {
+    return value.toInt();
+  }
+
+  final raw = value?.toString() ?? '';
+  if (raw.isEmpty) {
+    return 0;
+  }
+
+  // Supports API formats like "₹399", "-₹0", "1,299".
+  final cleaned = raw.replaceAll(RegExp(r'[^0-9-]'), '');
+  if (cleaned.isEmpty || cleaned == '-') {
+    return 0;
+  }
+
+  return int.tryParse(cleaned) ?? 0;
 }
 
 double _asDouble(Object? value) {

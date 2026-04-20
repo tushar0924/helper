@@ -53,4 +53,7 @@ class CartApiEndpoint {
   static const String summary = 'cart/summary';
   static const String clear = 'cart/clear';
   static const String availableCoupons = 'coupons/available';
+  static const String applyCoupon = 'coupons/apply';
+  static const String removeCoupon = 'coupons/remove';
+  static const String appliedCoupons = 'coupons/applied';
 }

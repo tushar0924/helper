@@ -1,5 +1,7 @@
 import '../../../network/api_client.dart';
 import '../../../network/api_endpoint.dart';
+import '../modal/apply_coupon_response_modal.dart';
+import '../modal/applied_coupons_modal.dart';
 import '../modal/available_coupons_modal.dart';
 import '../modal/cart_add_response_modal.dart';
 import '../modal/cart_clear_response_modal.dart';
@@ -62,5 +64,38 @@ class CartRepository {
     );
 
     return AvailableCouponsModal.fromJson(response);
+  }
+
+  Future<ApplyCouponResponseModal> applyCoupon({
+    required String couponCode,
+  }) async {
+    final response = await _apiClient.postJson(
+      CartApiEndpoint.applyCoupon,
+      requiresAuth: true,
+      body: <String, dynamic>{'couponCode': couponCode},
+    );
+
+    return ApplyCouponResponseModal.fromJson(response);
+  }
+
+  Future<ApplyCouponResponseModal> removeCoupon({
+    required String couponCode,
+  }) async {
+    final response = await _apiClient.deleteJson(
+      CartApiEndpoint.removeCoupon,
+      requiresAuth: true,
+      body: <String, dynamic>{'couponCode': couponCode},
+    );
+
+    return ApplyCouponResponseModal.fromJson(response);
+  }
+
+  Future<AppliedCouponsModal> getAppliedCoupons() async {
+    final response = await _apiClient.getJson(
+      CartApiEndpoint.appliedCoupons,
+      requiresAuth: true,
+    );
+
+    return AppliedCouponsModal.fromJson(response);
   }
 }
