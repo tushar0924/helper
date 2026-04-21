@@ -1,22 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-Future<void> showSelectSlotBottomSheet(BuildContext context) {
+import '../../application/cart_provider.dart';
+import '../../modal/cart_summary_modal.dart';
+
+Future<void> showSelectSlotBottomSheet(
+  BuildContext context,
+  CartSummaryModal summary,
+) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => const _SelectSlotSheet(),
+    builder: (_) => _SelectSlotSheet(summary: summary),
   );
 }
 
-class _SelectSlotSheet extends StatefulWidget {
-  const _SelectSlotSheet();
+class _SelectSlotSheet extends ConsumerStatefulWidget {
+  const _SelectSlotSheet({required this.summary});
+
+  final CartSummaryModal summary;
 
   @override
-  State<_SelectSlotSheet> createState() => _SelectSlotSheetState();
+  ConsumerState<_SelectSlotSheet> createState() => _SelectSlotSheetState();
 }
 
-class _SelectSlotSheetState extends State<_SelectSlotSheet> {
+class _SelectSlotSheetState extends ConsumerState<_SelectSlotSheet> {
   DateTime _focusedMonth = DateTime(DateTime.now().year, DateTime.now().month);
   DateTime? _selectedDate;
   String? _selectedTime;
@@ -42,12 +51,24 @@ class _SelectSlotSheetState extends State<_SelectSlotSheet> {
   @override
   void initState() {
     super.initState();
+    final preselectedDate = _tryParseApiDate(widget.summary.slot.date);
+    final preselectedTime = _toDisplayTime(widget.summary.slot.time);
+
+    if (preselectedDate != null) {
+      _focusedMonth = DateTime(preselectedDate.year, preselectedDate.month);
+      _selectedDate = preselectedDate;
+      _selectedTime = preselectedTime;
+      return;
+    }
+
     final now = DateTime.now();
     _selectedDate = DateTime(now.year, now.month, now.day);
   }
 
   @override
   Widget build(BuildContext context) {
+    final isMutating = ref.watch(cartProvider).isMutating;
+
     return Container(
       height: MediaQuery.of(context).size.height * 0.88,
       decoration: const BoxDecoration(
@@ -130,16 +151,29 @@ class _SelectSlotSheetState extends State<_SelectSlotSheet> {
               height: 42,
               child: ElevatedButton(
                 onPressed: _selectedDate == null || _selectedTime == null
+                        || isMutating
                     ? null
-                    : () {
+                    : () async {
+                        final date = _selectedDate!;
+                        final time = _selectedTime!;
+
+                        await ref
+                            .read(cartProvider.notifier)
+                            .updateSlot(
+                              date: _toApiDate(date),
+                              time: _toApiTime(time),
+                            );
+
+                        if (!mounted) {
+                          return;
+                        }
+
+                        final hasError = ref.read(cartProvider).errorMessage != null;
+                        if (hasError) {
+                          return;
+                        }
+
                         Navigator.of(context).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'Slot selected: ${_selectedDate!.day}/${_selectedDate!.month}/${_selectedDate!.year} $_selectedTime',
-                            ),
-                          ),
-                        );
                       },
                 style: ElevatedButton.styleFrom(
                   elevation: 0,
@@ -149,14 +183,25 @@ class _SelectSlotSheetState extends State<_SelectSlotSheet> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                 ),
-                child: const Text(
-                  'Confirm',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white,
-                  ),
-                ),
+                child: isMutating
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
+                        ),
+                      )
+                    : const Text(
+                        'Confirm',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white,
+                        ),
+                      ),
               ),
             ),
           ),
@@ -205,6 +250,79 @@ class _SelectSlotSheetState extends State<_SelectSlotSheet> {
 
     return hour * 60 + minute;
   }
+}
+
+DateTime? _tryParseApiDate(String? value) {
+  if (value == null || value.trim().isEmpty) {
+    return null;
+  }
+  final parsed = DateTime.tryParse(value);
+  if (parsed == null) {
+    return null;
+  }
+  return DateTime(parsed.year, parsed.month, parsed.day);
+}
+
+String _toApiDate(DateTime date) {
+  final yyyy = date.year.toString().padLeft(4, '0');
+  final mm = date.month.toString().padLeft(2, '0');
+  final dd = date.day.toString().padLeft(2, '0');
+  return '$yyyy-$mm-$dd';
+}
+
+String _toApiTime(String displayTime) {
+  final totalMinutes = _displaySlotToMinutes(displayTime);
+  final hours = (totalMinutes ~/ 60).toString().padLeft(2, '0');
+  final minutes = (totalMinutes % 60).toString().padLeft(2, '0');
+  return '$hours:$minutes';
+}
+
+int _displaySlotToMinutes(String slot) {
+  final pieces = slot.split(' ');
+  if (pieces.length != 2) {
+    return 0;
+  }
+
+  final timeParts = pieces[0].split(':');
+  if (timeParts.length != 2) {
+    return 0;
+  }
+
+  var hour = int.tryParse(timeParts[0]) ?? 0;
+  final minute = int.tryParse(timeParts[1]) ?? 0;
+  final period = pieces[1].toUpperCase();
+
+  if (period == 'PM' && hour != 12) {
+    hour += 12;
+  } else if (period == 'AM' && hour == 12) {
+    hour = 0;
+  }
+
+  return hour * 60 + minute;
+}
+
+String? _toDisplayTime(String? apiTime) {
+  if (apiTime == null || apiTime.trim().isEmpty) {
+    return null;
+  }
+
+  final parts = apiTime.split(':');
+  if (parts.length < 2) {
+    return null;
+  }
+
+  final hour24 = int.tryParse(parts[0]);
+  final minute = int.tryParse(parts[1]);
+  if (hour24 == null || minute == null) {
+    return null;
+  }
+
+  var hour12 = hour24 % 12;
+  if (hour12 == 0) {
+    hour12 = 12;
+  }
+  final period = hour24 >= 12 ? 'PM' : 'AM';
+  return '${hour12.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')} $period';
 }
 
 class _DateSelectorCard extends StatelessWidget {

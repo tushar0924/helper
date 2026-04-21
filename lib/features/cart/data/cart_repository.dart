@@ -39,6 +39,19 @@ class CartRepository {
     return CartUpdateResponseModal.fromJson(response);
   }
 
+  Future<CartUpdateResponseModal> updateSlot({
+    required String date,
+    required String time,
+  }) async {
+    final response = await _apiClient.postJson(
+      CartApiEndpoint.updateSlot,
+      requiresAuth: true,
+      body: <String, dynamic>{'date': date, 'time': time},
+    );
+
+    return CartUpdateResponseModal.fromJson(response);
+  }
+
   Future<CartSummaryResponseModal> getSummary() async {
     final response = await _apiClient.getJson(
       CartApiEndpoint.summary,

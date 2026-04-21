@@ -142,6 +142,23 @@ class CartController extends StateNotifier<CartState> {
     }
   }
 
+  Future<void> updateSlot({
+    required String date,
+    required String time,
+  }) async {
+    if (state.isMutating) {
+      return;
+    }
+
+    state = state.copyWith(isMutating: true, clearError: true);
+    try {
+      final response = await _repository.updateSlot(date: date, time: time);
+      state = state.copyWith(isMutating: false, summary: response.data);
+    } catch (error) {
+      state = state.copyWith(isMutating: false, errorMessage: error.toString());
+    }
+  }
+
   int quantityForServiceId(int serviceId) {
     final items = state.summary?.items ?? const <CartItemModal>[];
     for (final item in items) {

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../application/category_provider.dart';
 import 'home_screen.dart';
+import 'home_tab_screen.dart';
 import 'widgets/main_bottom_bar.dart';
 
 class MainNavigationScreen extends ConsumerStatefulWidget {
@@ -27,7 +28,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
   Widget _buildCurrentTab() {
     switch (_selectedTab) {
       case MainTab.home:
-        return const _ComingSoonTab(label: 'Home');
+        return const HomeTabScreen();
       case MainTab.helper:
         return const HelperTabView();
       case MainTab.kirana:

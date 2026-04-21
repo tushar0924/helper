@@ -67,6 +67,20 @@ class SessionManager {
     return prefs.getString(_refreshTokenKey);
   }
 
+  Future<String?> get fullName async {
+    final prefs = await _prefsFuture;
+    return prefs.getString(_fullNameKey);
+  }
+
+  Future<void> updateFullName(String fullName) async {
+    final prefs = await _prefsFuture;
+    if (fullName.trim().isEmpty) {
+      await prefs.remove(_fullNameKey);
+      return;
+    }
+    await prefs.setString(_fullNameKey, fullName.trim());
+  }
+
   Future<bool> get isLoggedIn async {
     final token = await accessToken;
     return token != null && token.isNotEmpty;

@@ -5,7 +5,9 @@ import '../application/cart_provider.dart';
 import '../application/coupon_provider.dart';
 import '../modal/applied_coupons_modal.dart';
 import '../modal/cart_summary_modal.dart';
+import 'booking_confirmed_screen.dart';
 import 'widgets/apply_coupon_bottom_sheet.dart';
+import 'widgets/search_partner_dialog.dart';
 import 'widgets/select_slot_screen.dart';
 
 class CartScreen extends ConsumerStatefulWidget {
@@ -16,6 +18,8 @@ class CartScreen extends ConsumerStatefulWidget {
 }
 
 class _CartScreenState extends ConsumerState<CartScreen> {
+  bool _isSearchingPartner = false;
+
   @override
   void initState() {
     super.initState();
@@ -194,6 +198,48 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                       ),
                     ),
                     const SizedBox(height: 10),
+                    _SimpleTile(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Text(
+                                'Booking Details',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                              const Spacer(),
+                              TextButton(
+                                onPressed: items.isEmpty
+                                    ? null
+                                    : () => showSelectSlotBottomSheet(
+                                        context,
+                                        summary,
+                                      ),
+                                child: const Text('Change Slot'),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          _slotInfoRow(
+                            icon: Icons.calendar_today_outlined,
+                            label: 'Date',
+                            value: _formatBookingDate(summary.slot.date),
+                          ),
+                          const SizedBox(height: 8),
+                          _slotInfoRow(
+                            icon: Icons.access_time,
+                            label: 'Time',
+                            value: _formatBookingTime(summary.slot.time),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
                     _AppliedCouponsCard(
                       appliedCouponsAsync: appliedCouponsAsync,
                       summary: summary,
@@ -263,24 +309,64 @@ class _CartScreenState extends ConsumerState<CartScreen> {
           height: 54,
           child: FilledButton(
             onPressed: items.isEmpty
+                || _isSearchingPartner
                 ? null
-                : () => showSelectSlotBottomSheet(context),
+                : () => _onSearchPartnerTap(summary),
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFF0B1F3A),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
               ),
             ),
-            child: const Text(
-              'Select a slot',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
-            ),
+            child: _isSearchingPartner
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : const Text(
+                    'Search Partner',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
           ),
         ),
+      ),
+    );
+  }
+
+  Future<void> _onSearchPartnerTap(CartSummaryModal summary) async {
+    if (_isSearchingPartner) {
+      return;
+    }
+
+    setState(() {
+      _isSearchingPartner = true;
+    });
+
+    final partnerFound = await showSearchPartnerDialog(context);
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isSearchingPartner = false;
+    });
+
+    if (!partnerFound) {
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => BookingConfirmedScreen(summary: summary),
       ),
     );
   }
@@ -316,6 +402,95 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       ),
     );
   }
+
+  Widget _slotInfoRow({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: const Color(0xFF6B7280)),
+        const SizedBox(width: 8),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            color: Color(0xFF6B7280),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const Spacer(),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 13,
+            color: Color(0xFF0F172A),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+String _formatBookingDate(String? rawDate) {
+  final date = DateTime.tryParse(rawDate ?? '');
+  if (date == null) {
+    return 'Not selected';
+  }
+
+  const weekdays = <String>[
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
+  ];
+  const months = <String>[
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
+
+  final weekday = weekdays[date.weekday - 1];
+  final month = months[date.month - 1];
+  return '$weekday, $month ${date.day}, ${date.year}';
+}
+
+String _formatBookingTime(String? rawTime) {
+  if (rawTime == null || rawTime.trim().isEmpty) {
+    return 'Not selected';
+  }
+
+  final parts = rawTime.split(':');
+  if (parts.length < 2) {
+    return rawTime;
+  }
+
+  final hour24 = int.tryParse(parts[0]);
+  final minute = int.tryParse(parts[1]);
+  if (hour24 == null || minute == null) {
+    return rawTime;
+  }
+
+  var hour12 = hour24 % 12;
+  if (hour12 == 0) {
+    hour12 = 12;
+  }
+  final period = hour24 >= 12 ? 'PM' : 'AM';
+  return '${hour12.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')} $period';
 }
 
 class _AppliedCouponsCard extends StatelessWidget {
@@ -585,37 +760,90 @@ class _ActionCard extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isPrimary
-                ? const Color(0xFF0B1F3A)
-                : const Color(0xFFD1D5DB),
-          ),
+      child: CustomPaint(
+        painter: const _DashedRoundedRectPainter(
+          color: Color(0xFF000000),
+          strokeWidth: 1.2,
+          gap: 3.2,
+          dash: 1,
+          radius: 14,
         ),
-        child: Row(
-          children: [
-            Icon(icon, color: const Color(0xFF0EA5E9), size: 18),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: const Color(0xFF0097D5), size: 14),
+              const SizedBox(width: 8),
+              Text(
                 title,
                 style: const TextStyle(
-                  fontSize: 14,
+                  fontSize: 17,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xFF0F172A),
+                  color: Color(0xFF0097D5),
                 ),
               ),
-            ),
-            const Icon(Icons.chevron_right, color: Color(0xFF94A3B8)),
-          ],
+            ],
+          ),
         ),
       ),
     );
+  }
+}
+
+class _DashedRoundedRectPainter extends CustomPainter {
+  const _DashedRoundedRectPainter({
+    required this.color,
+    required this.strokeWidth,
+    required this.gap,
+    required this.dash,
+    required this.radius,
+  });
+
+  final Color color;
+  final double strokeWidth;
+  final double gap;
+  final double dash;
+  final double radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+
+    final rect = Offset.zero & size;
+    final rrect = RRect.fromRectAndRadius(
+      rect.deflate(strokeWidth / 2),
+      Radius.circular(radius),
+    );
+    final path = Path()..addRRect(rrect);
+
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        final nextDistance =
+            (distance + dash).clamp(0.0, metric.length).toDouble();
+        canvas.drawPath(metric.extractPath(distance, nextDistance), paint);
+        distance += dash + gap;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedRoundedRectPainter oldDelegate) {
+    return oldDelegate.color != color ||
+        oldDelegate.strokeWidth != strokeWidth ||
+        oldDelegate.gap != gap ||
+        oldDelegate.dash != dash ||
+        oldDelegate.radius != radius;
   }
 }
 

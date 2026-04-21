@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../auth/application/auth_provider.dart';
 import '../application/category_provider.dart';
 import '../../cart/application/cart_provider.dart';
 import '../../../routes/app_router.dart';
+import 'profile_screen.dart';
 import 'widgets/category_skeleton_grid.dart';
 import 'widgets/most_booked_card.dart';
 import 'widgets/offer_card.dart';
@@ -307,10 +309,13 @@ class _OfferCarouselState extends State<_OfferCarousel> {
 }
 
 class _TopHeader extends ConsumerWidget {
+  const _TopHeader();
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final topInset = MediaQuery.of(context).padding.top;
     final cartCount = ref.watch(cartProvider).summary?.items.length ?? 0;
+    final fullNameFuture = ref.read(sessionManagerProvider).fullName;
 
     return Container(
       padding: EdgeInsets.fromLTRB(16, topInset + 10, 16, 18),
@@ -328,69 +333,118 @@ class _TopHeader extends ConsumerWidget {
         children: [
           Row(
             children: [
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Helperr4U',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 34,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Hello',
-                      style: TextStyle(
-                        color: Color(0xFFB5C5D5),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w400,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  IconButton(
-                    onPressed: () {
-                      ref
-                          .read(cartProvider.notifier)
-                          .loadSummary(forceRefresh: true);
-                      Navigator.of(context).pushNamed(AppRouter.cart);
-                    },
-                    icon: const Icon(
-                      Icons.shopping_cart_outlined,
-                      color: Colors.white,
-                      size: 28,
-                    ),
-                  ),
-                  if (cartCount > 0)
-                    Positioned(
-                      right: 5,
-                      top: 2,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 5,
-                          vertical: 1,
+              Expanded(
+                child: FutureBuilder<String?>(
+                  future: fullNameFuture,
+                  builder: (context, snapshot) {
+                    final name = snapshot.data?.trim().isNotEmpty == true
+                        ? snapshot.data!.trim()
+                        : 'Parul';
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              'Hello $name',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 30,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(width: 2),
+                            const Icon(
+                              Icons.keyboard_arrow_down,
+                              size: 16,
+                              color: Colors.white,
+                            ),
+                          ],
                         ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF00D09C),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          '$cartCount',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
+                        const SizedBox(height: 2),
+                        const Text(
+                          'Mansarover sector 5, Mansarover......',
+                          style: TextStyle(
+                            color: Color(0xFFB5C5D5),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w400,
                           ),
                         ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+              Row(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        IconButton(
+                          onPressed: () {
+                            ref
+                                .read(cartProvider.notifier)
+                                .loadSummary(forceRefresh: true);
+                            Navigator.of(context).pushNamed(AppRouter.cart);
+                          },
+                          icon: const Icon(
+                            Icons.shopping_cart_outlined,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                        ),
+                        if (cartCount > 0)
+                          Positioned(
+                            right: 3,
+                            top: 2,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 5,
+                                vertical: 1,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF00D09C),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                '$cartCount',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                    child: IconButton(
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const ProfileScreen(),
+                          ),
+                        );
+                      },
+                      padding: EdgeInsets.zero,
+                      icon: const Icon(
+                        Icons.person,
+                        size: 22,
+                        color: Color(0xFF111827),
                       ),
                     ),
+                  ),
                 ],
               ),
             ],

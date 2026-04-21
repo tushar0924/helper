@@ -173,11 +173,13 @@ class CartPricingModal {
 
   factory CartPricingModal.fromJson(Map<String, dynamic> json) {
     final taxAndFee = _asInt(json['taxAndFee']);
+    final gst = _asInt(json['gst']);
+    final platformFee = _asInt(json['platformFee']);
     return CartPricingModal(
       itemTotal: _asInt(json['itemTotal']),
       addonTotal: _asInt(json['addonTotal']),
       discount: _asInt(json['discount']),
-      taxAndFee: taxAndFee,
+      taxAndFee: taxAndFee > 0 ? taxAndFee : (gst + platformFee),
       total: _asInt(json['total']),
     );
   }

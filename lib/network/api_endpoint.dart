@@ -45,11 +45,19 @@ class HomeApiEndpoint {
   static const String services = 'services';
 }
 
+class UserApiEndpoint {
+  UserApiEndpoint._();
+
+  static const String me = 'user/me';
+  static const String profile = 'user/profile';
+}
+
 class CartApiEndpoint {
   CartApiEndpoint._();
 
   static const String add = 'cart/add';
   static const String updateItem = 'cart/update-item';
+  static const String updateSlot = 'cart/update-slot';
   static const String summary = 'cart/summary';
   static const String clear = 'cart/clear';
   static const String availableCoupons = 'coupons/available';

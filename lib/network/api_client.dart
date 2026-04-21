@@ -57,6 +57,34 @@ class ApiClient {
     return _decodeResponse(response);
   }
 
+  Future<Map<String, dynamic>> putJson(
+    String path, {
+    Map<String, dynamic>? body,
+    bool requiresAuth = false,
+    Map<String, String>? headers,
+  }) async {
+    final resolvedHeaders = await _headers(
+      requiresAuth: requiresAuth,
+      headers: headers,
+    );
+    final uri = _uriFor(path);
+    final requestBody = jsonEncode(body ?? const <String, dynamic>{});
+    _logRequest(
+      method: 'PUT',
+      uri: uri,
+      headers: resolvedHeaders,
+      body: requestBody,
+    );
+
+    final response = await _client.put(
+      uri,
+      headers: resolvedHeaders,
+      body: requestBody,
+    );
+    _logResponse(method: 'PUT', uri: uri, response: response);
+    return _decodeResponse(response);
+  }
+
   Future<Map<String, dynamic>> deleteJson(
     String path, {
     Map<String, dynamic>? body,
