@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../app/utils/app_toast.dart';
 import '../../../cart/application/cart_provider.dart';
 
 class MostBookedCard extends ConsumerWidget {
@@ -28,6 +29,14 @@ class MostBookedCard extends ConsumerWidget {
     final disableAdd = serviceId == null
         ? true
         : ref.read(cartProvider.notifier).isAddDisabled(serviceId!);
+    final isServiceMutating =
+        serviceId != null && cartState.mutatingServiceId == serviceId;
+    final isAddLoading =
+        isServiceMutating && cartState.mutatingServiceAction == 'add';
+    final isIncrementLoading =
+        isServiceMutating && cartState.mutatingServiceAction == 'increment';
+    final isDecrementLoading =
+        isServiceMutating && cartState.mutatingServiceAction == 'decrement';
 
     return Container(
       width: 134,
@@ -97,13 +106,12 @@ class MostBookedCard extends ConsumerWidget {
               _CartActionButton(
                 quantity: quantity,
                 disableIncrement: disableAdd,
+                isAddLoading: isAddLoading,
+                isIncrementLoading: isIncrementLoading,
+                isDecrementLoading: isDecrementLoading,
                 onAdd: () {
                   if (serviceId == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Service id not available for this item'),
-                      ),
-                    );
+                    AppToast.error('Service id not available for this item');
                     return;
                   }
 
@@ -140,6 +148,9 @@ class _CartActionButton extends StatelessWidget {
   const _CartActionButton({
     required this.quantity,
     required this.disableIncrement,
+    required this.isAddLoading,
+    required this.isIncrementLoading,
+    required this.isDecrementLoading,
     required this.onAdd,
     required this.onIncrement,
     required this.onDecrement,
@@ -147,6 +158,9 @@ class _CartActionButton extends StatelessWidget {
 
   final int quantity;
   final bool disableIncrement;
+  final bool isAddLoading;
+  final bool isIncrementLoading;
+  final bool isDecrementLoading;
   final VoidCallback onAdd;
   final VoidCallback onIncrement;
   final VoidCallback onDecrement;
@@ -155,7 +169,7 @@ class _CartActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     if (quantity == 0) {
       return InkWell(
-        onTap: disableIncrement ? null : onAdd,
+        onTap: disableIncrement || isAddLoading ? null : onAdd,
         borderRadius: BorderRadius.circular(7),
         child: Container(
           height: 21,
@@ -165,14 +179,23 @@ class _CartActionButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(7),
           ),
           alignment: Alignment.center,
-          child: const Text(
-            'Add',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 8.8,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+          child: isAddLoading
+              ? const SizedBox(
+                  height: 12,
+                  width: 12,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                )
+              : const Text(
+                  'Add',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 8.8,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
         ),
       );
     }
@@ -189,20 +212,31 @@ class _CartActionButton extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           InkWell(
-            onTap: onDecrement,
+            onTap: isDecrementLoading ? null : onDecrement,
             borderRadius: BorderRadius.circular(7),
-            child: const SizedBox(
+            child: SizedBox(
               width: 20,
               child: Center(
-                child: Text(
-                  '−',
-                  style: TextStyle(
-                    color: Color(0xFF09A6E8),
-                    fontSize: 16,
-                    height: 1,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+                child: isDecrementLoading
+                    ? const SizedBox(
+                        width: 11,
+                        height: 11,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Color(0xFF09A6E8),
+                          ),
+                        ),
+                      )
+                    : const Text(
+                        '−',
+                        style: TextStyle(
+                          color: Color(0xFF09A6E8),
+                          fontSize: 16,
+                          height: 1,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
               ),
             ),
           ),
@@ -215,20 +249,31 @@ class _CartActionButton extends StatelessWidget {
             ),
           ),
           InkWell(
-            onTap: disableIncrement ? null : onIncrement,
+            onTap: disableIncrement || isIncrementLoading ? null : onIncrement,
             borderRadius: BorderRadius.circular(7),
-            child: const SizedBox(
+            child: SizedBox(
               width: 20,
               child: Center(
-                child: Text(
-                  '+',
-                  style: TextStyle(
-                    color: Color(0xFF09A6E8),
-                    fontSize: 14,
-                    height: 1,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+                child: isIncrementLoading
+                    ? const SizedBox(
+                        width: 11,
+                        height: 11,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Color(0xFF09A6E8),
+                          ),
+                        ),
+                      )
+                    : const Text(
+                        '+',
+                        style: TextStyle(
+                          color: Color(0xFF09A6E8),
+                          fontSize: 14,
+                          height: 1,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
               ),
             ),
           ),

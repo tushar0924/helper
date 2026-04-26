@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/utils/app_toast.dart';
 import '../../../routes/app_router.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -23,9 +24,7 @@ class _SignupScreenState extends State<SignupScreen> {
   void _goToOtp() {
     final phone = _phoneController.text.trim();
     if (phone.length != 10) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid 10-digit phone number')),
-      );
+      AppToast.error('Enter a valid 10-digit phone number');
       return;
     }
 
@@ -218,7 +217,9 @@ class _SignupScreenState extends State<SignupScreen> {
                             ),
                             TextButton(
                               onPressed: () {
-                                Navigator.of(context).pushNamed(AppRouter.login);
+                                Navigator.of(
+                                  context,
+                                ).pushNamed(AppRouter.login);
                               },
                               style: TextButton.styleFrom(
                                 padding: EdgeInsets.zero,

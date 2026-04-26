@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/utils/app_toast.dart';
 import '../application/auth_provider.dart';
 import '../../../routes/app_router.dart';
 
@@ -23,9 +24,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _goToOtp() async {
     final phone = _phoneController.text.trim();
     if (phone.length != 10) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid 10-digit phone number')),
-      );
+      AppToast.error('Enter a valid 10-digit phone number');
       return;
     }
 
@@ -41,9 +40,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         return;
       }
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.toString())));
+      AppToast.error(error.toString());
     }
   }
 

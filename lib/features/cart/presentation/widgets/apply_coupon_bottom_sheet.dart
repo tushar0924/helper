@@ -30,8 +30,7 @@ class _ApplyCouponScreenState extends ConsumerState<ApplyCouponScreen> {
   }
 
   Future<void> _onApplyCoupon(CouponModal coupon) async {
-    if (
-        !coupon.isApplicable ||
+    if (!coupon.isApplicable ||
         _applyingCouponCode != null ||
         _removingCouponCode != null) {
       return;
@@ -42,7 +41,7 @@ class _ApplyCouponScreenState extends ConsumerState<ApplyCouponScreen> {
     });
 
     try {
-      final response = await ref
+      await ref
           .read(cartRepositoryProvider)
           .applyCoupon(couponCode: coupon.code);
 
@@ -56,18 +55,10 @@ class _ApplyCouponScreenState extends ConsumerState<ApplyCouponScreen> {
 
       ref.invalidate(appliedCouponsProvider);
       await ref.read(cartProvider.notifier).loadSummary(forceRefresh: true);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(response.message)),
-      );
-    } catch (error) {
+    } catch (_) {
       if (!mounted) {
         return;
       }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.toString())),
-      );
     } finally {
       if (!mounted) {
         return;
@@ -89,7 +80,7 @@ class _ApplyCouponScreenState extends ConsumerState<ApplyCouponScreen> {
     });
 
     try {
-      final response = await ref
+      await ref
           .read(cartRepositoryProvider)
           .removeCoupon(couponCode: coupon.code);
 
@@ -106,18 +97,10 @@ class _ApplyCouponScreenState extends ConsumerState<ApplyCouponScreen> {
       ref.invalidate(appliedCouponsProvider);
       ref.invalidate(availableCouponsProvider);
       await ref.read(cartProvider.notifier).loadSummary(forceRefresh: true);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(response.message)),
-      );
-    } catch (error) {
+    } catch (_) {
       if (!mounted) {
         return;
       }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.toString())),
-      );
     } finally {
       if (!mounted) {
         return;
@@ -135,7 +118,9 @@ class _ApplyCouponScreenState extends ConsumerState<ApplyCouponScreen> {
     final appliedCouponsAsync = ref.watch(appliedCouponsProvider);
     final cartCoupon = ref.watch(cartProvider).summary?.coupon;
 
-    final appliedCouponCodes = <String>{if (_appliedCouponCode != null) _appliedCouponCode!};
+    final appliedCouponCodes = <String>{
+      if (_appliedCouponCode != null) _appliedCouponCode!,
+    };
 
     final summaryCouponCode = cartCoupon is Map<String, dynamic>
         ? cartCoupon['code']?.toString()
@@ -262,13 +247,7 @@ class _CouponCodeInputRow extends StatelessWidget {
             ),
           ),
           GestureDetector(
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Manual coupon apply flow is not wired yet.'),
-                ),
-              );
-            },
+            onTap: null,
             child: const Text(
               'APPLY',
               style: TextStyle(
@@ -367,7 +346,7 @@ class _CouponCard extends StatelessWidget {
   final CouponModal coupon;
   final bool isApplied;
   final bool isApplying;
-    final bool isRemoving;
+  final bool isRemoving;
   final VoidCallback onApplyTap;
   final VoidCallback onRemoveTap;
 
@@ -379,18 +358,18 @@ class _CouponCard extends StatelessWidget {
         ? const Color(0xFFFF8500)
         : const Color(0xFF4B5563);
     final actionLabel = isRemoving
-      ? 'REMOVING...'
-      : isApplying
-      ? 'APPLYING...'
-      : (isApplied ? 'Remove' : 'APPLY');
+        ? 'REMOVING...'
+        : isApplying
+        ? 'APPLYING...'
+        : (isApplied ? 'Remove' : 'APPLY');
     final actionColor = isApplied
-      ? const Color(0xFFDC2626)
+        ? const Color(0xFFDC2626)
         : canApply
         ? const Color(0xFFFF6B00)
         : const Color(0xFF9CA3AF);
     final onActionTap = isBusy
-      ? null
-      : (isApplied ? onRemoveTap : (canApply ? onApplyTap : null));
+        ? null
+        : (isApplied ? onRemoveTap : (canApply ? onApplyTap : null));
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),

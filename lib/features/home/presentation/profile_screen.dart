@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../auth/application/auth_provider.dart';
 import '../../../routes/app_router.dart';
+import 'help_support_screen.dart';
+import 'policies_screen.dart';
+import 'saved_addresses_screen.dart';
 import 'user_profile_screen.dart';
 
 class ProfileScreen extends ConsumerWidget {
@@ -71,7 +74,11 @@ class ProfileScreen extends ConsumerWidget {
                     iconBg: const Color(0xFFC78100),
                     title: 'Addresses',
                     subtitle: 'Manage saved addresses',
-                    onTap: _noop,
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<dynamic>(
+                        builder: (_) => const SavedAddressesScreen(),
+                      ),
+                    ),
                   ),
                   const _MenuDivider(),
                   _ProfileMenuTile(
@@ -87,7 +94,7 @@ class ProfileScreen extends ConsumerWidget {
                     iconBg: const Color(0xFF1D58E5),
                     title: 'Policies',
                     subtitle: 'Terms of use, Privacy policy and others',
-                    onTap: _noop,
+                    onTap: () => _openPolicies(context),
                   ),
                   const _MenuDivider(),
                   _ProfileMenuTile(
@@ -95,7 +102,7 @@ class ProfileScreen extends ConsumerWidget {
                     iconBg: const Color(0xFFA855F7),
                     title: 'Help & support',
                     subtitle: 'Reach out to us in case you have\na question',
-                    onTap: _noop,
+                    onTap: () => _openHelpSupport(context),
                   ),
                 ],
               ),
@@ -107,10 +114,9 @@ class ProfileScreen extends ConsumerWidget {
                 if (!context.mounted) {
                   return;
                 }
-                Navigator.of(context).pushNamedAndRemoveUntil(
-                  AppRouter.login,
-                  (route) => false,
-                );
+                Navigator.of(
+                  context,
+                ).pushNamedAndRemoveUntil(AppRouter.login, (route) => false);
               },
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size.fromHeight(48),
@@ -223,9 +229,19 @@ class _MenuDivider extends StatelessWidget {
 void _noop() {}
 
 void _openProfile(BuildContext context) {
-  Navigator.of(context).push(
-    MaterialPageRoute<void>(
-      builder: (_) => const UserProfileScreen(),
-    ),
-  );
+  Navigator.of(
+    context,
+  ).push(MaterialPageRoute<void>(builder: (_) => const UserProfileScreen()));
+}
+
+void _openPolicies(BuildContext context) {
+  Navigator.of(
+    context,
+  ).push(MaterialPageRoute<void>(builder: (_) => const PoliciesScreen()));
+}
+
+void _openHelpSupport(BuildContext context) {
+  Navigator.of(
+    context,
+  ).push(MaterialPageRoute<void>(builder: (_) => const HelpSupportScreen()));
 }

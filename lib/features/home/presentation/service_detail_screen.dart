@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/utils/app_toast.dart';
 import '../../../app/widgets/skeleton_shimmer.dart';
 import '../../../routes/app_router.dart';
 import '../../cart/application/cart_provider.dart';
@@ -47,9 +48,7 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
   Widget build(BuildContext context) {
     ref.listen<ServiceState>(serviceControllerProvider, (_, next) {
       if (next.errorMessage != null && next.errorMessage!.isNotEmpty) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(next.errorMessage!)));
+        AppToast.error(next.errorMessage!);
       }
     });
 
@@ -394,6 +393,13 @@ class _ServiceCard extends ConsumerWidget {
     final cartState = ref.watch(cartProvider);
     final quantity = cartQuantityForServiceId(cartState, item.id);
     final disableAdd = ref.read(cartProvider.notifier).isAddDisabled(item.id);
+    final isServiceMutating = cartState.mutatingServiceId == item.id;
+    final isAddLoading =
+        isServiceMutating && cartState.mutatingServiceAction == 'add';
+    final isIncrementLoading =
+        isServiceMutating && cartState.mutatingServiceAction == 'increment';
+    final isDecrementLoading =
+        isServiceMutating && cartState.mutatingServiceAction == 'decrement';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -557,16 +563,14 @@ class _ServiceCard extends ConsumerWidget {
                       child: _CartActionButton(
                         quantity: quantity,
                         disableIncrement: disableAdd,
+                        isAddLoading: isAddLoading,
+                        isIncrementLoading: isIncrementLoading,
+                        isDecrementLoading: isDecrementLoading,
                         onAdd: () {
                           ref
                               .read(cartProvider.notifier)
                               .addToCart(serviceId: item.id, quantity: 1);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('${item.name} added to cart'),
-                              duration: const Duration(milliseconds: 900),
-                            ),
-                          );
+                          AppToast.success('${item.name} added to cart');
                         },
                         onIncrement: () {
                           ref
@@ -736,6 +740,9 @@ class _CartActionButton extends StatelessWidget {
   const _CartActionButton({
     required this.quantity,
     required this.disableIncrement,
+    required this.isAddLoading,
+    required this.isIncrementLoading,
+    required this.isDecrementLoading,
     required this.onAdd,
     required this.onIncrement,
     required this.onDecrement,
@@ -743,6 +750,9 @@ class _CartActionButton extends StatelessWidget {
 
   final int quantity;
   final bool disableIncrement;
+  final bool isAddLoading;
+  final bool isIncrementLoading;
+  final bool isDecrementLoading;
   final VoidCallback onAdd;
   final VoidCallback onIncrement;
   final VoidCallback onDecrement;
@@ -753,7 +763,7 @@ class _CartActionButton extends StatelessWidget {
       return SizedBox(
         height: 28,
         child: ElevatedButton(
-          onPressed: disableIncrement ? null : onAdd,
+          onPressed: disableIncrement || isAddLoading ? null : onAdd,
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF0EA5C6),
             padding: EdgeInsets.zero,
@@ -762,14 +772,23 @@ class _CartActionButton extends StatelessWidget {
             ),
             elevation: 0,
           ),
-          child: const Text(
-            'Add',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.white,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+          child: isAddLoading
+              ? const SizedBox(
+                  height: 14,
+                  width: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                )
+              : const Text(
+                  'Add',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
         ),
       );
     }
@@ -785,20 +804,31 @@ class _CartActionButton extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           InkWell(
-            onTap: onDecrement,
+            onTap: isDecrementLoading ? null : onDecrement,
             borderRadius: BorderRadius.circular(8),
-            child: const SizedBox(
+            child: SizedBox(
               width: 30,
               child: Center(
-                child: Text(
-                  '−',
-                  style: TextStyle(
-                    fontSize: 20,
-                    height: 1,
-                    color: Color(0xFF0EA5C6),
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+                child: isDecrementLoading
+                    ? const SizedBox(
+                        height: 14,
+                        width: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Color(0xFF0EA5C6),
+                          ),
+                        ),
+                      )
+                    : const Text(
+                        '−',
+                        style: TextStyle(
+                          fontSize: 20,
+                          height: 1,
+                          color: Color(0xFF0EA5C6),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
               ),
             ),
           ),
@@ -811,20 +841,31 @@ class _CartActionButton extends StatelessWidget {
             ),
           ),
           InkWell(
-            onTap: disableIncrement ? null : onIncrement,
+            onTap: disableIncrement || isIncrementLoading ? null : onIncrement,
             borderRadius: BorderRadius.circular(8),
-            child: const SizedBox(
+            child: SizedBox(
               width: 30,
               child: Center(
-                child: Text(
-                  '+',
-                  style: TextStyle(
-                    fontSize: 18,
-                    height: 1,
-                    color: Color(0xFF0EA5C6),
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+                child: isIncrementLoading
+                    ? const SizedBox(
+                        height: 14,
+                        width: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Color(0xFF0EA5C6),
+                          ),
+                        ),
+                      )
+                    : const Text(
+                        '+',
+                        style: TextStyle(
+                          fontSize: 18,
+                          height: 1,
+                          color: Color(0xFF0EA5C6),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
               ),
             ),
           ),

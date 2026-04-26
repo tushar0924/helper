@@ -1,8 +1,14 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/utils/app_toast.dart';
 import '../application/cart_provider.dart';
 import '../application/coupon_provider.dart';
+import '../../home/application/address_provider.dart';
+import '../../home/data/address_models.dart';
 import '../modal/applied_coupons_modal.dart';
 import '../modal/cart_summary_modal.dart';
 import 'booking_confirmed_screen.dart';
@@ -32,9 +38,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
   Widget build(BuildContext context) {
     ref.listen<CartState>(cartProvider, (_, next) {
       if (next.errorMessage != null && next.errorMessage!.isNotEmpty) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(next.errorMessage!)));
+        AppToast.error(next.errorMessage!);
       }
     });
 
@@ -164,12 +168,9 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                               ),
                               const Spacer(),
                               TextButton(
-                                onPressed: () => _showComingSoonSheet(
-                                  context,
-                                  title: 'Change address',
-                                  message:
-                                      'Address selection is not connected yet.',
-                                ),
+                                onPressed: state.isMutating
+                                    ? null
+                                    : _onChangeAddressTap,
                                 child: const Text('Change'),
                               ),
                             ],
@@ -308,8 +309,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
         child: SizedBox(
           height: 54,
           child: FilledButton(
-            onPressed: items.isEmpty
-                || _isSearchingPartner
+            onPressed: items.isEmpty || _isSearchingPartner
                 ? null
                 : () => _onSearchPartnerTap(summary),
             style: FilledButton.styleFrom(
@@ -350,6 +350,20 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       _isSearchingPartner = true;
     });
 
+    final bookingRequestFuture = ref
+        .read(cartRepositoryProvider)
+        .createFromCart(idempotencyKey: _generateIdempotencyKey());
+
+    unawaited(
+      bookingRequestFuture.catchError((error) {
+        if (!mounted) {
+          return;
+        }
+
+        AppToast.error(error.toString());
+      }),
+    );
+
     final partnerFound = await showSearchPartnerDialog(context);
 
     if (!mounted) {
@@ -369,6 +383,52 @@ class _CartScreenState extends ConsumerState<CartScreen> {
         builder: (_) => BookingConfirmedScreen(summary: summary),
       ),
     );
+  }
+
+  Future<void> _onChangeAddressTap() async {
+    final selectedAddress = await showModalBottomSheet<SavedAddress>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _AddressSelectionBottomSheet(
+        currentAddressId: ref.read(cartProvider).summary?.address?.id,
+      ),
+    );
+
+    if (!mounted || selectedAddress == null) {
+      return;
+    }
+
+    await ref
+        .read(cartProvider.notifier)
+        .updateAddress(addressId: selectedAddress.id);
+
+    if (!mounted) {
+      return;
+    }
+
+    final latestState = ref.read(cartProvider);
+    if (latestState.errorMessage == null || latestState.errorMessage!.isEmpty) {
+      AppToast.success('Service address updated');
+    }
+  }
+
+  String _generateIdempotencyKey() {
+    final random = math.Random();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+    String hex(int value) => value.toRadixString(16).padLeft(2, '0');
+
+    return '${bytes.take(4).map(hex).join()}-'
+        '${bytes.skip(4).take(2).map(hex).join()}-'
+        '${bytes.skip(6).take(2).map(hex).join()}-'
+        '${bytes.skip(8).take(2).map(hex).join()}-'
+        '${bytes.skip(10).take(6).map(hex).join()}';
   }
 
   Widget _billRow(
@@ -524,7 +584,11 @@ class _AppliedCouponsCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
               child: Row(
                 children: const [
-                  Icon(Icons.discount_outlined, color: Color(0xFF0EA5E9), size: 18),
+                  Icon(
+                    Icons.discount_outlined,
+                    color: Color(0xFF0EA5E9),
+                    size: 18,
+                  ),
                   SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -564,7 +628,9 @@ class _AppliedCouponsCard extends StatelessWidget {
                 return const SizedBox.shrink();
               }
 
-              return _AppliedCouponRows(messages: rows.isEmpty ? fallbackRows : rows);
+              return _AppliedCouponRows(
+                messages: rows.isEmpty ? fallbackRows : rows,
+              );
             },
           ),
         ],
@@ -608,11 +674,7 @@ class _AppliedCouponRows extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  const Icon(
-                    Icons.check,
-                    size: 14,
-                    color: Color(0xFF16A34A),
-                  ),
+                  const Icon(Icons.check, size: 14, color: Color(0xFF16A34A)),
                   const SizedBox(width: 2),
                   const Text(
                     'Applied',
@@ -675,20 +737,97 @@ int _parseInt(Object? value) {
   return int.tryParse(cleaned) ?? 0;
 }
 
-void _showComingSoonSheet(
-  BuildContext context, {
-  required String title,
-  required String message,
-}) {
-  showModalBottomSheet<void>(
-    context: context,
-    backgroundColor: Colors.white,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
-    builder: (context) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+class _AddressSelectionBottomSheet extends ConsumerStatefulWidget {
+  const _AddressSelectionBottomSheet({this.currentAddressId});
+
+  final int? currentAddressId;
+
+  @override
+  ConsumerState<_AddressSelectionBottomSheet> createState() =>
+      _AddressSelectionBottomSheetState();
+}
+
+class _AddressSelectionBottomSheetState
+    extends ConsumerState<_AddressSelectionBottomSheet> {
+  bool _isLoading = true;
+  bool _isSaving = false;
+  String? _errorMessage;
+  List<SavedAddress> _addresses = const <SavedAddress>[];
+  int? _selectedAddressId;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedAddressId = widget.currentAddressId;
+    Future.microtask(_loadAddresses);
+  }
+
+  Future<void> _loadAddresses() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final response = await ref.read(addressRepositoryProvider).getAddresses();
+      if (!mounted) {
+        return;
+      }
+
+      final fallbackId = response.addresses.isNotEmpty
+          ? response.addresses.first.id
+          : null;
+      final currentId = _selectedAddressId;
+      final hasCurrentId =
+          currentId != null &&
+          response.addresses.any((item) => item.id == currentId);
+
+      setState(() {
+        _addresses = response.addresses;
+        if (!hasCurrentId) {
+          _selectedAddressId = fallbackId;
+        }
+        _isLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _errorMessage = error.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _saveSelection() {
+    final selectedId = _selectedAddressId;
+    if (selectedId == null || _isSaving) {
+      return;
+    }
+
+    final selectedAddress = _addresses.firstWhere(
+      (address) => address.id == selectedId,
+      orElse: () => _addresses.first,
+    );
+
+    setState(() {
+      _isSaving = true;
+    });
+    Navigator.of(context).pop(selectedAddress);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          12,
+          16,
+          16 + MediaQuery.of(context).viewInsets.bottom,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -703,43 +842,169 @@ void _showComingSoonSheet(
                 ),
               ),
             ),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              style: const TextStyle(
+            const SizedBox(height: 14),
+            const Text(
+              'Select Service Address',
+              style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
                 color: Color(0xFF0F172A),
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              style: const TextStyle(
-                fontSize: 13,
-                height: 1.4,
-                color: Color(0xFF475569),
+            const SizedBox(height: 12),
+            if (_isLoading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_errorMessage != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Failed to load addresses.',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFFB91C1C),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _errorMessage!,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF6B7280),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton(
+                      onPressed: _loadAddresses,
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              )
+            else if (_addresses.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Text(
+                  'No saved addresses found. Please add an address from Profile > Addresses.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF6B7280),
+                    height: 1.4,
+                  ),
+                ),
+              )
+            else
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: _addresses.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final address = _addresses[index];
+                    final isSelected = address.id == _selectedAddressId;
+
+                    return InkWell(
+                      onTap: () {
+                        setState(() {
+                          _selectedAddressId = address.id;
+                        });
+                      },
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isSelected
+                                ? const Color(0xFF0B1F3A)
+                                : const Color(0xFFE5E7EB),
+                          ),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Radio<int>(
+                              value: address.id,
+                              groupValue: _selectedAddressId,
+                              onChanged: (value) {
+                                if (value == null) {
+                                  return;
+                                }
+                                setState(() {
+                                  _selectedAddressId = value;
+                                });
+                              },
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    address.label,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF0F172A),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '${address.address}, ${address.city} - ${address.pinCode}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Color(0xFF6B7280),
+                                      height: 1.35,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             SizedBox(
               width: double.infinity,
               child: FilledButton(
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: _addresses.isEmpty || _selectedAddressId == null
+                    ? null
+                    : _saveSelection,
                 style: FilledButton.styleFrom(
                   backgroundColor: const Color(0xFF0B1F3A),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: const Text('Close'),
+                child: _isSaving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
+                        ),
+                      )
+                    : const Text('Save Address'),
               ),
             ),
           ],
         ),
-      );
-    },
-  );
+      ),
+    );
+  }
 }
 
 class _ActionCard extends StatelessWidget {
@@ -829,8 +1094,9 @@ class _DashedRoundedRectPainter extends CustomPainter {
     for (final metric in path.computeMetrics()) {
       var distance = 0.0;
       while (distance < metric.length) {
-        final nextDistance =
-            (distance + dash).clamp(0.0, metric.length).toDouble();
+        final nextDistance = (distance + dash)
+            .clamp(0.0, metric.length)
+            .toDouble();
         canvas.drawPath(metric.extractPath(distance, nextDistance), paint);
         distance += dash + gap;
       }
@@ -874,9 +1140,20 @@ class _CartServiceTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final cartState = ref.watch(cartProvider);
+    final isServiceMutating = cartState.mutatingServiceId == item.serviceId;
+    final isIncrementLoading =
+        isServiceMutating && cartState.mutatingServiceAction == 'increment';
+    final isDecrementLoading =
+        isServiceMutating && cartState.mutatingServiceAction == 'decrement';
     final disableIncrement =
         item.quantity >= CartController.maxQuantity ||
-        ref.watch(cartProvider).isMutating;
+        cartState.isMutating ||
+        cartState.mutatingServiceId != null;
+    final disableDecrement =
+        item.quantity <= 1 ||
+        cartState.isMutating ||
+        cartState.mutatingServiceId != null;
 
     return Container(
       width: double.infinity,
@@ -944,18 +1221,31 @@ class _CartServiceTile extends ConsumerWidget {
                       child: Row(
                         children: [
                           InkWell(
-                            onTap: item.quantity <= 1
+                            onTap: disableDecrement
                                 ? null
                                 : () {
                                     ref
                                         .read(cartProvider.notifier)
                                         .decrementByServiceId(item.serviceId);
                                   },
-                            child: const Icon(
-                              Icons.remove,
-                              size: 20,
-                              color: Color(0xFF0097D5),
-                            ),
+                            child: isDecrementLoading
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Color(0xFF0097D5),
+                                      ),
+                                    ),
+                                  )
+                                : Icon(
+                                    Icons.remove,
+                                    size: 20,
+                                    color: disableDecrement
+                                        ? const Color(0xFF9CA3AF)
+                                        : const Color(0xFF0097D5),
+                                  ),
                           ),
                           const SizedBox(width: 10),
                           Text(
@@ -974,13 +1264,24 @@ class _CartServiceTile extends ConsumerWidget {
                                         .read(cartProvider.notifier)
                                         .incrementByServiceId(item.serviceId);
                                   },
-                            child: Icon(
-                              Icons.add,
-                              size: 20,
-                              color: disableIncrement
-                                  ? const Color(0xFF9CA3AF)
-                                  : const Color(0xFF00B6B5),
-                            ),
+                            child: isIncrementLoading
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Color(0xFF00B6B5),
+                                      ),
+                                    ),
+                                  )
+                                : Icon(
+                                    Icons.add,
+                                    size: 20,
+                                    color: disableIncrement
+                                        ? const Color(0xFF9CA3AF)
+                                        : const Color(0xFF00B6B5),
+                                  ),
                           ),
                         ],
                       ),

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../app/utils/app_toast.dart';
 import '../session/session_manager.dart';
 import 'api_endpoint.dart';
 
@@ -15,6 +16,7 @@ class ApiClient {
   Future<Map<String, dynamic>> getJson(
     String path, {
     bool requiresAuth = false,
+    bool showSuccessToast = true,
     Map<String, String>? headers,
   }) async {
     final resolvedHeaders = await _headers(
@@ -26,13 +28,14 @@ class ApiClient {
 
     final response = await _client.get(uri, headers: resolvedHeaders);
     _logResponse(method: 'GET', uri: uri, response: response);
-    return _decodeResponse(response);
+    return _decodeResponse(response, showSuccessToast: showSuccessToast);
   }
 
   Future<Map<String, dynamic>> postJson(
     String path, {
     Map<String, dynamic>? body,
     bool requiresAuth = false,
+    bool showSuccessToast = true,
     Map<String, String>? headers,
   }) async {
     final resolvedHeaders = await _headers(
@@ -54,13 +57,14 @@ class ApiClient {
       body: requestBody,
     );
     _logResponse(method: 'POST', uri: uri, response: response);
-    return _decodeResponse(response);
+    return _decodeResponse(response, showSuccessToast: showSuccessToast);
   }
 
   Future<Map<String, dynamic>> putJson(
     String path, {
     Map<String, dynamic>? body,
     bool requiresAuth = false,
+    bool showSuccessToast = true,
     Map<String, String>? headers,
   }) async {
     final resolvedHeaders = await _headers(
@@ -82,13 +86,14 @@ class ApiClient {
       body: requestBody,
     );
     _logResponse(method: 'PUT', uri: uri, response: response);
-    return _decodeResponse(response);
+    return _decodeResponse(response, showSuccessToast: showSuccessToast);
   }
 
   Future<Map<String, dynamic>> deleteJson(
     String path, {
     Map<String, dynamic>? body,
     bool requiresAuth = false,
+    bool showSuccessToast = true,
     Map<String, String>? headers,
   }) async {
     final resolvedHeaders = await _headers(
@@ -110,7 +115,7 @@ class ApiClient {
       body: requestBody,
     );
     _logResponse(method: 'DELETE', uri: uri, response: response);
-    return _decodeResponse(response);
+    return _decodeResponse(response, showSuccessToast: showSuccessToast);
   }
 
   Uri _uriFor(String path) {
@@ -137,7 +142,10 @@ class ApiClient {
     return resolvedHeaders;
   }
 
-  Map<String, dynamic> _decodeResponse(http.Response response) {
+  Map<String, dynamic> _decodeResponse(
+    http.Response response, {
+    required bool showSuccessToast,
+  }) {
     Object? decoded;
     if (response.body.isNotEmpty) {
       try {
@@ -149,7 +157,17 @@ class ApiClient {
 
     decoded ??= const <String, dynamic>{};
 
+    final message = _extractMessage(decoded);
+
     if (response.statusCode >= 200 && response.statusCode < 300) {
+      if (showSuccessToast && message != null && message.trim().isNotEmpty) {
+        if (decoded is Map<String, dynamic> && decoded['success'] == false) {
+          AppToast.error(message);
+        } else {
+          AppToast.success(message);
+        }
+      }
+
       if (decoded is Map<String, dynamic>) {
         return decoded;
       }
@@ -157,16 +175,25 @@ class ApiClient {
       return <String, dynamic>{'data': decoded};
     }
 
-    final message = decoded is Map<String, dynamic>
-        ? decoded['message']?.toString()
-        : decoded is String
-        ? decoded
-        : null;
+    if (message != null && message.trim().isNotEmpty) {
+      AppToast.error(message);
+    }
+
     throw ApiException(
       message: message ?? 'Request failed with status ${response.statusCode}',
       statusCode: response.statusCode,
       responseBody: response.body,
     );
+  }
+
+  String? _extractMessage(Object? decoded) {
+    if (decoded is Map<String, dynamic>) {
+      return decoded['message']?.toString();
+    }
+    if (decoded is String) {
+      return decoded;
+    }
+    return null;
   }
 
   void _logRequest({

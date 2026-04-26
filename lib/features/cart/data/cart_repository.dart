@@ -52,6 +52,18 @@ class CartRepository {
     return CartUpdateResponseModal.fromJson(response);
   }
 
+  Future<CartUpdateResponseModal> updateAddress({
+    required int addressId,
+  }) async {
+    final response = await _apiClient.postJson(
+      CartApiEndpoint.updateAddress,
+      requiresAuth: true,
+      body: <String, dynamic>{'addressId': addressId},
+    );
+
+    return CartUpdateResponseModal.fromJson(response);
+  }
+
   Future<CartSummaryResponseModal> getSummary() async {
     final response = await _apiClient.getJson(
       CartApiEndpoint.summary,
@@ -74,6 +86,7 @@ class CartRepository {
     final response = await _apiClient.getJson(
       CartApiEndpoint.availableCoupons,
       requiresAuth: true,
+      showSuccessToast: false,
     );
 
     return AvailableCouponsModal.fromJson(response);
@@ -85,6 +98,7 @@ class CartRepository {
     final response = await _apiClient.postJson(
       CartApiEndpoint.applyCoupon,
       requiresAuth: true,
+      showSuccessToast: false,
       body: <String, dynamic>{'couponCode': couponCode},
     );
 
@@ -97,6 +111,7 @@ class CartRepository {
     final response = await _apiClient.deleteJson(
       CartApiEndpoint.removeCoupon,
       requiresAuth: true,
+      showSuccessToast: false,
       body: <String, dynamic>{'couponCode': couponCode},
     );
 
@@ -107,8 +122,17 @@ class CartRepository {
     final response = await _apiClient.getJson(
       CartApiEndpoint.appliedCoupons,
       requiresAuth: true,
+      showSuccessToast: false,
     );
 
     return AppliedCouponsModal.fromJson(response);
+  }
+
+  Future<void> createFromCart({required String idempotencyKey}) async {
+    await _apiClient.postJson(
+      BookingRequestApiEndpoint.createFromCart,
+      requiresAuth: true,
+      body: <String, dynamic>{'idempotencyKey': idempotencyKey},
+    );
   }
 }

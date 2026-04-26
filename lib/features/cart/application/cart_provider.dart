@@ -8,25 +8,38 @@ class CartState {
   const CartState({
     this.isLoading = false,
     this.isMutating = false,
+    this.mutatingServiceId,
+    this.mutatingServiceAction,
     this.summary,
     this.errorMessage,
   });
 
   final bool isLoading;
   final bool isMutating;
+  final int? mutatingServiceId;
+  final String? mutatingServiceAction;
   final CartSummaryModal? summary;
   final String? errorMessage;
 
   CartState copyWith({
     bool? isLoading,
     bool? isMutating,
+    int? mutatingServiceId,
+    String? mutatingServiceAction,
     CartSummaryModal? summary,
     String? errorMessage,
     bool clearError = false,
+    bool clearServiceMutation = false,
   }) {
     return CartState(
       isLoading: isLoading ?? this.isLoading,
       isMutating: isMutating ?? this.isMutating,
+      mutatingServiceId: clearServiceMutation
+          ? null
+          : (mutatingServiceId ?? this.mutatingServiceId),
+      mutatingServiceAction: clearServiceMutation
+          ? null
+          : (mutatingServiceAction ?? this.mutatingServiceAction),
       summary: summary ?? this.summary,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
     );
@@ -63,7 +76,7 @@ class CartController extends StateNotifier<CartState> {
   }
 
   Future<void> addToCart({required int serviceId, int quantity = 1}) async {
-    if (state.isMutating) {
+    if (state.isMutating || state.mutatingServiceId != null) {
       return;
     }
 
@@ -71,23 +84,34 @@ class CartController extends StateNotifier<CartState> {
       return;
     }
 
-    state = state.copyWith(isMutating: true, clearError: true);
+    state = state.copyWith(
+      mutatingServiceId: serviceId,
+      mutatingServiceAction: 'add',
+      clearError: true,
+    );
     try {
       final response = await _repository.addToCart(
         serviceId: serviceId,
         quantity: quantity,
       );
-      state = state.copyWith(isMutating: false, summary: response.data);
+      state = state.copyWith(
+        summary: response.data,
+        clearServiceMutation: true,
+      );
     } catch (error) {
-      state = state.copyWith(isMutating: false, errorMessage: error.toString());
+      state = state.copyWith(
+        errorMessage: error.toString(),
+        clearServiceMutation: true,
+      );
     }
   }
 
   Future<void> updateItem({
     required int serviceId,
     required int quantity,
+    String action = 'increment',
   }) async {
-    if (state.isMutating) {
+    if (state.isMutating || state.mutatingServiceId != null) {
       return;
     }
 
@@ -95,15 +119,25 @@ class CartController extends StateNotifier<CartState> {
       return;
     }
 
-    state = state.copyWith(isMutating: true, clearError: true);
+    state = state.copyWith(
+      mutatingServiceId: serviceId,
+      mutatingServiceAction: action,
+      clearError: true,
+    );
     try {
       final response = await _repository.updateItem(
         serviceId: serviceId,
         quantity: quantity,
       );
-      state = state.copyWith(isMutating: false, summary: response.data);
+      state = state.copyWith(
+        summary: response.data,
+        clearServiceMutation: true,
+      );
     } catch (error) {
-      state = state.copyWith(isMutating: false, errorMessage: error.toString());
+      state = state.copyWith(
+        errorMessage: error.toString(),
+        clearServiceMutation: true,
+      );
     }
   }
 
@@ -116,16 +150,24 @@ class CartController extends StateNotifier<CartState> {
       await addToCart(serviceId: serviceId, quantity: 1);
       return;
     }
-    await updateItem(serviceId: serviceId, quantity: current + 1);
+    await updateItem(
+      serviceId: serviceId,
+      quantity: current + 1,
+      action: 'increment',
+    );
   }
 
   Future<void> decrementByServiceId(int serviceId) async {
     final current = quantityForServiceId(serviceId);
     if (current <= 1) {
-      await updateItem(serviceId: serviceId, quantity: 1);
+      await updateItem(serviceId: serviceId, quantity: 1, action: 'decrement');
       return;
     }
-    await updateItem(serviceId: serviceId, quantity: current - 1);
+    await updateItem(
+      serviceId: serviceId,
+      quantity: current - 1,
+      action: 'decrement',
+    );
   }
 
   Future<void> clearCart() async {
@@ -142,10 +184,7 @@ class CartController extends StateNotifier<CartState> {
     }
   }
 
-  Future<void> updateSlot({
-    required String date,
-    required String time,
-  }) async {
+  Future<void> updateSlot({required String date, required String time}) async {
     if (state.isMutating) {
       return;
     }
@@ -154,6 +193,21 @@ class CartController extends StateNotifier<CartState> {
     try {
       final response = await _repository.updateSlot(date: date, time: time);
       state = state.copyWith(isMutating: false, summary: response.data);
+    } catch (error) {
+      state = state.copyWith(isMutating: false, errorMessage: error.toString());
+    }
+  }
+
+  Future<void> updateAddress({required int addressId}) async {
+    if (state.isMutating) {
+      return;
+    }
+
+    state = state.copyWith(isMutating: true, clearError: true);
+    try {
+      final response = await _repository.updateAddress(addressId: addressId);
+      state = state.copyWith(isMutating: false, summary: response.data);
+      await loadSummary(forceRefresh: true);
     } catch (error) {
       state = state.copyWith(isMutating: false, errorMessage: error.toString());
     }
@@ -170,7 +224,13 @@ class CartController extends StateNotifier<CartState> {
   }
 
   bool isAddDisabled(int serviceId) {
-    return quantityForServiceId(serviceId) >= maxQuantity || state.isMutating;
+    return quantityForServiceId(serviceId) >= maxQuantity ||
+        state.isMutating ||
+        state.mutatingServiceId != null;
+  }
+
+  bool isServiceMutating(int serviceId) {
+    return state.mutatingServiceId == serviceId;
   }
 }
 

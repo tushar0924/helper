@@ -50,6 +50,9 @@ class UserApiEndpoint {
 
   static const String me = 'user/me';
   static const String profile = 'user/profile';
+  static const String addresses = 'user/addresses';
+
+  static String addressById(int id) => 'user/addresses/$id';
 }
 
 class CartApiEndpoint {
@@ -57,6 +60,7 @@ class CartApiEndpoint {
 
   static const String add = 'cart/add';
   static const String updateItem = 'cart/update-item';
+  static const String updateAddress = 'cart/update-address';
   static const String updateSlot = 'cart/update-slot';
   static const String summary = 'cart/summary';
   static const String clear = 'cart/clear';
@@ -64,4 +68,10 @@ class CartApiEndpoint {
   static const String applyCoupon = 'coupons/apply';
   static const String removeCoupon = 'coupons/remove';
   static const String appliedCoupons = 'coupons/applied';
+}
+
+class BookingRequestApiEndpoint {
+  BookingRequestApiEndpoint._();
+
+  static const String createFromCart = 'booking-requests/create-from-cart';
 }

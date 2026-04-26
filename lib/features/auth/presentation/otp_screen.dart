@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/utils/app_toast.dart';
 import '../application/auth_provider.dart';
 import '../../../routes/app_router.dart';
 
@@ -66,16 +67,12 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
   Future<void> _verifyAndContinue(String? phone) async {
     final otp = _controllers.map((c) => c.text).join();
     if (otp.length < 4) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Enter the complete OTP')));
+      AppToast.error('Enter the complete OTP');
       return;
     }
 
     if (phone == null || phone.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Phone number is missing')));
+      AppToast.error('Phone number is missing');
       return;
     }
 
@@ -97,9 +94,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
         return;
       }
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.toString())));
+      AppToast.error(error.toString());
     }
   }
 

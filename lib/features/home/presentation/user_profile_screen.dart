@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/utils/app_toast.dart';
 import '../application/user_profile_provider.dart';
 
 class UserProfileScreen extends ConsumerStatefulWidget {
@@ -22,9 +23,9 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
   void initState() {
     super.initState();
     Future.microtask(() {
-      ref.read(userProfileControllerProvider.notifier).loadProfile(
-            forceRefresh: true,
-          );
+      ref
+          .read(userProfileControllerProvider.notifier)
+          .loadProfile(forceRefresh: true);
     });
   }
 
@@ -171,9 +172,7 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
                           child: OutlinedButton(
                             onPressed: state.isSaving ? null : _cancelEditing,
                             style: OutlinedButton.styleFrom(
-                              side: const BorderSide(
-                                color: Color(0xFFC3CAD4),
-                              ),
+                              side: const BorderSide(color: Color(0xFFC3CAD4)),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
@@ -219,12 +218,14 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
       return;
     }
 
-    await ref.read(userProfileControllerProvider.notifier).completeProfile(
-      fullName: _fullNameController.text.trim(),
-      email: _emailController.text.trim().isEmpty
-          ? null
-          : _emailController.text.trim(),
-    );
+    await ref
+        .read(userProfileControllerProvider.notifier)
+        .completeProfile(
+          fullName: _fullNameController.text.trim(),
+          email: _emailController.text.trim().isEmpty
+              ? null
+              : _emailController.text.trim(),
+        );
 
     if (!mounted) {
       return;
@@ -240,9 +241,7 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
       _initializedFromProfile = true;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Profile updated successfully')),
-    );
+    AppToast.success('Profile updated successfully');
   }
 
   void _syncControllers(String fullName, String email) {
@@ -376,7 +375,9 @@ class _ProfileField extends StatelessWidget {
               fontWeight: FontWeight.w500,
             ),
             validator: (value) {
-              if (!readOnly && label == 'Full Name' && (value ?? '').trim().isEmpty) {
+              if (!readOnly &&
+                  label == 'Full Name' &&
+                  (value ?? '').trim().isEmpty) {
                 return 'Full name is required';
               }
               return null;
@@ -387,10 +388,7 @@ class _ProfileField extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             helperText!,
-            style: const TextStyle(
-              fontSize: 11,
-              color: Color(0xFF6B7280),
-            ),
+            style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
           ),
         ],
       ],
