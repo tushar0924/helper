@@ -21,9 +21,34 @@ class HelperApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF00D09C)),
         useMaterial3: true,
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: <TargetPlatform, PageTransitionsBuilder>{
+            TargetPlatform.android: _NoAnimationPageTransitionsBuilder(),
+            TargetPlatform.iOS: _NoAnimationPageTransitionsBuilder(),
+            TargetPlatform.macOS: _NoAnimationPageTransitionsBuilder(),
+            TargetPlatform.windows: _NoAnimationPageTransitionsBuilder(),
+            TargetPlatform.linux: _NoAnimationPageTransitionsBuilder(),
+            TargetPlatform.fuchsia: _NoAnimationPageTransitionsBuilder(),
+          },
+        ),
       ),
       initialRoute: AppRouter.splash,
       routes: AppRouter.routes(),
     );
+  }
+}
+
+class _NoAnimationPageTransitionsBuilder extends PageTransitionsBuilder {
+  const _NoAnimationPageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    return child;
   }
 }

@@ -27,6 +27,7 @@ class ServiceDetailScreen extends ConsumerStatefulWidget {
 
 class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
   final TextEditingController _searchController = TextEditingController();
+  bool _isCartBannerDismissed = false;
 
   @override
   void initState() {
@@ -53,6 +54,9 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
     });
 
     final state = ref.watch(serviceControllerProvider);
+    final cartState = ref.watch(cartProvider);
+    final cartSummary = cartState.summary;
+    final cartItemCount = cartSummary?.items.length ?? 0;
     final services = state.categoryId == widget.categoryId
         ? state.items
         : const <ServiceModal>[];
@@ -148,6 +152,99 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
           ],
         ),
       ),
+      bottomNavigationBar: cartItemCount <= 0
+              || _isCartBannerDismissed
+          ? null
+          : SafeArea(
+              top: false,
+              minimum: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: const Color(0xD9FFFFFF),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0x66D8DDE5), width: 1),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x1A0F172A),
+                      blurRadius: 16,
+                      offset: Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 7, 6, 7),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '$cartItemCount ${cartItemCount == 1 ? 'item' : 'items'} added',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              formatInr(cartSummary?.pricing.total ?? 0),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF6B7280),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      SizedBox(
+                        height: 33,
+                        child: FilledButton(
+                          onPressed: () {
+                            Navigator.of(context).pushNamed(AppRouter.cart);
+                          },
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFF0B1F3A),
+                            padding: const EdgeInsets.symmetric(horizontal: 18),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          child: const Text(
+                            'View Cart',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      InkWell(
+                        onTap: () {
+                          setState(() {
+                            _isCartBannerDismissed = true;
+                          });
+                        },
+                        borderRadius: BorderRadius.circular(12),
+                        child: const Padding(
+                          padding: EdgeInsets.all(2),
+                          child: Icon(
+                            Icons.cancel,
+                            size: 18,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
     );
   }
 }

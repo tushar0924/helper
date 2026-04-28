@@ -1,16 +1,22 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import '../../../app/utils/app_toast.dart';
+import '../../auth/application/auth_provider.dart';
 import '../application/cart_provider.dart';
 import '../application/coupon_provider.dart';
+import '../data/cart_repository.dart';
 import '../../home/application/address_provider.dart';
 import '../../home/data/address_models.dart';
+import '../modal/booking_details_modal.dart';
 import '../modal/applied_coupons_modal.dart';
 import '../modal/cart_summary_modal.dart';
+import '../../../network/api_endpoint.dart';
 import 'booking_confirmed_screen.dart';
 import 'widgets/apply_coupon_bottom_sheet.dart';
 import 'widgets/search_partner_dialog.dart';
@@ -25,13 +31,28 @@ class CartScreen extends ConsumerStatefulWidget {
 
 class _CartScreenState extends ConsumerState<CartScreen> {
   bool _isSearchingPartner = false;
+  io.Socket? _bookingSocket;
+  Completer<int?>? _pendingAcceptCompleter;
+  Timer? _pendingAcceptTimeout;
+  int? _pendingBookingRequestId;
+  int? _pendingUserId;
+  bool _socketListenersAttached = false;
+  Map<String, dynamic> _partnerDetails = const <String, dynamic>{};
 
   @override
   void initState() {
     super.initState();
     Future.microtask(() {
       ref.read(cartProvider.notifier).loadSummary(forceRefresh: true);
+      unawaited(_ensureBookingSocketConnected());
     });
+  }
+
+  @override
+  void dispose() {
+    _pendingAcceptTimeout?.cancel();
+    _bookingSocket?.dispose();
+    super.dispose();
   }
 
   @override
@@ -45,6 +66,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     final state = ref.watch(cartProvider);
     final summary = state.summary ?? CartSummaryModal.empty();
     final items = summary.items;
+    final hasSelectedSlot = _hasSelectedSlot(summary);
     final appliedCouponsAsync = ref.watch(appliedCouponsProvider);
 
     return Scaffold(
@@ -199,47 +221,45 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    _SimpleTile(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              const Text(
-                                'Booking Details',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF0F172A),
+                    if (hasSelectedSlot)
+                      _SimpleTile(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Text(
+                                  'Booking Details',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF0F172A),
+                                  ),
                                 ),
-                              ),
-                              const Spacer(),
-                              TextButton(
-                                onPressed: items.isEmpty
-                                    ? null
-                                    : () => showSelectSlotBottomSheet(
-                                        context,
-                                        summary,
-                                      ),
-                                child: const Text('Change Slot'),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          _slotInfoRow(
-                            icon: Icons.calendar_today_outlined,
-                            label: 'Date',
-                            value: _formatBookingDate(summary.slot.date),
-                          ),
-                          const SizedBox(height: 8),
-                          _slotInfoRow(
-                            icon: Icons.access_time,
-                            label: 'Time',
-                            value: _formatBookingTime(summary.slot.time),
-                          ),
-                        ],
+                                const Spacer(),
+                                TextButton(
+                                  onPressed: items.isEmpty
+                                      ? null
+                                      : () => _onSelectSlotTap(summary),
+                                  child: const Text('Change Slot'),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            _slotInfoRow(
+                              icon: Icons.calendar_today_outlined,
+                              label: 'Date',
+                              value: _formatBookingDate(summary.slot.date),
+                            ),
+                            const SizedBox(height: 8),
+                            _slotInfoRow(
+                              icon: Icons.access_time,
+                              label: 'Time',
+                              value: _formatBookingTime(summary.slot.time),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
                     const SizedBox(height: 10),
                     _AppliedCouponsCard(
                       appliedCouponsAsync: appliedCouponsAsync,
@@ -311,7 +331,9 @@ class _CartScreenState extends ConsumerState<CartScreen> {
           child: FilledButton(
             onPressed: items.isEmpty || _isSearchingPartner
                 ? null
-                : () => _onSearchPartnerTap(summary),
+                : hasSelectedSlot
+                ? () => _onSearchPartnerTap(summary)
+                : () => _onSelectSlotTap(summary),
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFF0B1F3A),
               shape: RoundedRectangleBorder(
@@ -327,9 +349,9 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                       valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                     ),
                   )
-                : const Text(
-                    'Search Partner',
-                    style: TextStyle(
+                : Text(
+                    hasSelectedSlot ? 'Search Partner' : 'Select a Slot',
+                    style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
                       color: Colors.white,
@@ -346,43 +368,414 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       return;
     }
 
+    if (!_hasSelectedSlot(summary)) {
+      await _onSelectSlotTap(summary);
+      return;
+    }
+
     setState(() {
       _isSearchingPartner = true;
     });
 
-    final bookingRequestFuture = ref
-        .read(cartRepositoryProvider)
-        .createFromCart(idempotencyKey: _generateIdempotencyKey());
+    await _ensureBookingSocketConnected();
 
-    unawaited(
-      bookingRequestFuture.catchError((error) {
-        if (!mounted) {
-          return;
-        }
+    final idempotencyKey = _generateIdempotencyKey();
+    var searchDialogDismissed = false;
+    final dialogFuture = showSearchPartnerDialog(context).whenComplete(() {
+      searchDialogDismissed = true;
+      if (mounted && _isSearchingPartner) {
+        setState(() {
+          _isSearchingPartner = false;
+        });
+      }
+    });
 
+    CreateFromCartResult? result;
+    try {
+      result = await ref
+          .read(cartRepositoryProvider)
+          .createFromCart(idempotencyKey: idempotencyKey);
+      if (searchDialogDismissed) {
+        return;
+      }
+    } catch (error) {
+      if (mounted && !searchDialogDismissed) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+      await dialogFuture;
+
+      if (mounted) {
         AppToast.error(error.toString());
-      }),
-    );
+      }
+      if (mounted) {
+        setState(() {
+          _isSearchingPartner = false;
+        });
+      }
+      return;
+    }
 
-    final partnerFound = await showSearchPartnerDialog(context);
+    if (result!.message.trim().isNotEmpty) {
+      AppToast.success(result.message);
+    }
+
+    int? bookingId = result.bookingId;
+    final bookingRequestId = result.bookingRequestId;
+    if ((bookingId == null || bookingId <= 0) &&
+        bookingRequestId != null &&
+        bookingRequestId > 0) {
+      bookingId = await _waitForBookingAcceptanceViaSocket(
+        bookingRequestId: bookingRequestId,
+        timeout: Duration(seconds: (result.acceptanceWindowSeconds ?? 30) + 5),
+      );
+      if (searchDialogDismissed) {
+        return;
+      }
+    }
+
+    if (!searchDialogDismissed) {
+      await _closeSearchDialog(dialogFuture);
+    }
 
     if (!mounted) {
       return;
     }
 
-    setState(() {
-      _isSearchingPartner = false;
-    });
+    if (_isSearchingPartner) {
+      setState(() {
+        _isSearchingPartner = false;
+      });
+    }
 
-    if (!partnerFound) {
+    if (bookingId == null || bookingId <= 0) {
+      AppToast.error('No helper accepted your request. Please try again.');
       return;
     }
 
+    BookingDetailsModal? bookingDetails;
+    try {
+      bookingDetails = await ref
+          .read(cartRepositoryProvider)
+          .getPartnerBooking(bookingId: bookingId);
+      _partnerDetails = bookingDetails.toPartnerDetailsMap();
+    } catch (error) {
+      debugPrint('[BOOKING] Failed to load booking details: $error');
+    }
+
+    debugPrint('[BOOKING] ===== REDIRECTING TO BOOKING CONFIRMED SCREEN =====');
+    debugPrint('[BOOKING] BookingId: $bookingId');
+    debugPrint('[BOOKING] Summary Data:');
+    debugPrint('  - Items Count: ${summary.items.length}');
+    debugPrint('  - Items: ${summary.items}');
+    debugPrint('  - Address: ${summary.address}');
+    debugPrint('  - Pricing Total: ${summary.pricing.total}');
+    if (bookingDetails != null) {
+      debugPrint('  - Booking Status: ${bookingDetails.status}');
+      debugPrint(
+        '  - Partner Name: ${bookingDetails.helper?.displayName ?? 'Partner'}',
+      );
+    }
+    debugPrint('[BOOKING] ===== NAVIGATING NOW =====');
+
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => BookingConfirmedScreen(summary: summary),
+        builder: (_) => BookingConfirmedScreen(
+          summary: summary,
+          bookingId: bookingId!,
+          bookingDetails: bookingDetails,
+          partnerDetails: _partnerDetails,
+        ),
       ),
     );
+  }
+
+  Future<int?> _waitForBookingAcceptanceViaSocket({
+    required int bookingRequestId,
+    required Duration timeout,
+  }) async {
+    await _ensureBookingSocketConnected();
+    if (_bookingSocket == null) {
+      return null;
+    }
+
+    _pendingBookingRequestId = bookingRequestId;
+    _pendingAcceptCompleter = Completer<int?>();
+    _pendingAcceptTimeout?.cancel();
+    _pendingAcceptTimeout = Timer(timeout, () {
+      debugPrint(
+        '[SOCKET][BOOKING] Timeout waiting for accept '
+        '(bookingRequestId=$bookingRequestId, timeout=${timeout.inSeconds}s)',
+      );
+      if (!(_pendingAcceptCompleter?.isCompleted ?? true)) {
+        _pendingAcceptCompleter?.complete(null);
+      }
+    });
+
+    _bookingSocket?.emit('booking_request_subscribe', <String, dynamic>{
+      'bookingRequestId': bookingRequestId,
+      if (_pendingUserId != null) 'userId': _pendingUserId,
+    });
+    _bookingSocket?.emit('booking-request-subscribe', <String, dynamic>{
+      'bookingRequestId': bookingRequestId,
+      if (_pendingUserId != null) 'userId': _pendingUserId,
+    });
+    _bookingSocket?.emit('bookingRequestSubscribe', <String, dynamic>{
+      'bookingRequestId': bookingRequestId,
+      if (_pendingUserId != null) 'userId': _pendingUserId,
+    });
+    debugPrint(
+      '[SOCKET][BOOKING] Subscribe emitted for bookingRequestId=$bookingRequestId'
+      '${_pendingUserId != null ? ', userId=$_pendingUserId' : ''}',
+    );
+
+    final result = await _pendingAcceptCompleter!.future;
+    debugPrint(
+      '[SOCKET][BOOKING] waitForBookingAcceptance completed with bookingId=$result',
+    );
+
+    _pendingAcceptTimeout?.cancel();
+    _pendingAcceptTimeout = null;
+    _pendingAcceptCompleter = null;
+    _pendingBookingRequestId = null;
+
+    return result;
+  }
+
+  Future<void> _ensureBookingSocketConnected() async {
+    if (_bookingSocket != null) {
+      if (!(_bookingSocket!.connected)) {
+        _bookingSocket!.connect();
+      }
+      return;
+    }
+
+    final token = await ref.read(sessionManagerProvider).accessToken;
+    if (token == null || token.trim().isEmpty) {
+      return;
+    }
+
+    final sessionData = await ref.read(sessionManagerProvider).getSessionData();
+    _pendingUserId = _toInt(sessionData['userId']);
+
+    _bookingSocket = io.io(
+      ApiEndpoint.socketUrl,
+      io.OptionBuilder()
+          .setTransports(<String>['websocket', 'polling'])
+          .setPath('/socket.io')
+          .enableForceNew()
+          .disableReconnection()
+          .setAuth(<String, dynamic>{'token': token})
+          .setExtraHeaders(<String, dynamic>{'Authorization': 'Bearer $token'})
+          .build(),
+    );
+
+    if (!_socketListenersAttached) {
+      _registerBookingSocketListeners();
+      _socketListenersAttached = true;
+    }
+
+    _bookingSocket!.connect();
+  }
+
+  void _registerBookingSocketListeners() {
+    final socket = _bookingSocket;
+    if (socket == null) {
+      return;
+    }
+
+    socket.onConnect((_) {
+      debugPrint('[SOCKET][BOOKING] Connected');
+    });
+
+    socket.onAny((event, payload) {
+      debugPrint('[SOCKET][BOOKING] onAny event=$event payload=$payload');
+    });
+
+    socket.onConnectError((error) {
+      debugPrint('[SOCKET][BOOKING] Connect error: $error');
+    });
+
+    socket.onError((error) {
+      debugPrint('[SOCKET][BOOKING] Socket error: $error');
+    });
+
+    socket.onDisconnect((reason) {
+      debugPrint('[SOCKET][BOOKING] Disconnected: $reason');
+    });
+
+    const bookingAcceptEvents = <String>[
+      'booking:accepted',
+      'booking_request_accepted',
+      'booking-request-accepted',
+      'bookingRequestAccepted',
+      'booking_request_updated',
+      'booking-request-updated',
+      'bookingRequestUpdated',
+      'booking_request_status_updated',
+      'booking-request-status-updated',
+      'bookingRequestStatusUpdated',
+      'booking_request_accept',
+      'booking-request-accept',
+      'bookingRequestAccept',
+      'booking_accepted',
+      'booking-accepted',
+      'bookingAccepted',
+      'booking_assigned',
+      'booking-assigned',
+      'bookingAssigned',
+    ];
+
+    for (final eventName in bookingAcceptEvents) {
+      socket.on(eventName, _onBookingAcceptedEvent);
+    }
+  }
+
+  void _onBookingAcceptedEvent(dynamic payload) {
+    final map = _normalizeEventPayload(payload);
+    if (map == null) {
+      return;
+    }
+
+    debugPrint('[SOCKET][BOOKING] ===== WEBHOOK DATA =====');
+    debugPrint('[SOCKET][BOOKING] Full payload: $map');
+
+    // Extract partner information if available
+    if (map['partner'] is Map<String, dynamic>) {
+      final partner = map['partner'] as Map<String, dynamic>;
+      _partnerDetails = partner;
+      debugPrint('[SOCKET][BOOKING] Partner Details:');
+      debugPrint('  - ID: ${partner['id']}');
+      debugPrint('  - Name: ${partner['name']}');
+      debugPrint('  - Email: ${partner['email']}');
+      debugPrint('  - Phone: ${partner['phone']}');
+      debugPrint('  - Rating: ${partner['rating']}');
+      debugPrint('  - Experience: ${partner['experience']}');
+      debugPrint('  - ProfileImage: ${partner['profileImage']}');
+      debugPrint('  - Full Partner Data: $partner');
+    }
+
+    // Extract user information if available
+    if (map['user'] is Map<String, dynamic>) {
+      final user = map['user'] as Map<String, dynamic>;
+      debugPrint('[SOCKET][BOOKING] User Details: $user');
+    }
+
+    // Extract booking information
+    if (map['booking'] is Map<String, dynamic>) {
+      final booking = map['booking'] as Map<String, dynamic>;
+      debugPrint('[SOCKET][BOOKING] Booking Details: $booking');
+    }
+
+    final payloadRequestId = _toInt(
+      map['bookingRequestId'] ??
+          map['requestId'] ??
+          (map['bookingRequest'] is Map<String, dynamic>
+              ? (map['bookingRequest'] as Map<String, dynamic>)['id']
+              : null),
+    );
+
+    if (_pendingBookingRequestId != null &&
+        payloadRequestId != null &&
+        payloadRequestId != _pendingBookingRequestId) {
+      debugPrint(
+        '[SOCKET][BOOKING] Ignored event: request id mismatch '
+        '(expected=$_pendingBookingRequestId, got=$payloadRequestId)',
+      );
+      return;
+    }
+
+    final bookingId = _toInt(
+      map['bookingId'] ??
+          map['acceptedBookingId'] ??
+          map['id'] ??
+          (map['booking'] is Map<String, dynamic>
+              ? (map['booking'] as Map<String, dynamic>)['id']
+              : null),
+    );
+
+    if (bookingId == null || bookingId <= 0) {
+      debugPrint('[SOCKET][BOOKING] Event received but booking id not found');
+      return;
+    }
+
+    debugPrint('[SOCKET][BOOKING] Accepted booking id received: $bookingId');
+    debugPrint('[SOCKET][BOOKING] ===== END WEBHOOK DATA =====');
+    if (!(_pendingAcceptCompleter?.isCompleted ?? true)) {
+      _pendingAcceptCompleter?.complete(bookingId);
+    }
+  }
+
+  Map<String, dynamic>? _normalizeEventPayload(dynamic payload) {
+    final root = _toMap(payload);
+    if (root == null) {
+      return null;
+    }
+
+    final nestedData = root['data'];
+    if (nestedData is Map<String, dynamic>) {
+      return nestedData;
+    }
+    if (nestedData is Map) {
+      return nestedData.map((key, value) => MapEntry(key.toString(), value));
+    }
+
+    return root;
+  }
+
+  Future<void> _closeSearchDialog(Future<void> dialogFuture) async {
+    if (mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+    await dialogFuture;
+  }
+
+  Map<String, dynamic>? _toMap(dynamic payload) {
+    if (payload is Map<String, dynamic>) {
+      return payload;
+    }
+    if (payload is Map) {
+      return payload.map((key, value) => MapEntry(key.toString(), value));
+    }
+    if (payload is String) {
+      try {
+        final decoded = jsonDecode(payload);
+        if (decoded is Map<String, dynamic>) {
+          return decoded;
+        }
+        if (decoded is Map) {
+          return decoded.map((key, value) => MapEntry(key.toString(), value));
+        }
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  int? _toInt(Object? value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  Future<void> _onSelectSlotTap(CartSummaryModal summary) async {
+    await showSelectSlotBottomSheet(context, summary);
+
+    if (!mounted) {
+      return;
+    }
+
+    await ref.read(cartProvider.notifier).loadSummary(forceRefresh: true);
+  }
+
+  bool _hasSelectedSlot(CartSummaryModal summary) {
+    final hasDate = (summary.slot.date ?? '').trim().isNotEmpty;
+    final hasTime = (summary.slot.time ?? '').trim().isNotEmpty;
+    return hasDate && hasTime;
   }
 
   Future<void> _onChangeAddressTap() async {
@@ -417,7 +810,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
   }
 
   String _generateIdempotencyKey() {
-    final random = math.Random();
+    final random = math.Random.secure();
     final bytes = List<int>.generate(16, (_) => random.nextInt(256));
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;

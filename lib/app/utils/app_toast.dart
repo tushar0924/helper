@@ -24,7 +24,7 @@ class AppToast {
   static Future<bool> error(String message) {
     return _show(
       message,
-      backgroundColor: const Color(0xFFDC2626),
+      backgroundColor: const Color(0xFF0B2A4A),
       textColor: Colors.white,
     );
   }

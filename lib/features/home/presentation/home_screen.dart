@@ -75,29 +75,29 @@ class HelperTabView extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Services',
+                    'Explore all Categories',
                     style: TextStyle(
-                      fontSize: 20,
-                      color: Colors.black,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _CategoryGrid(categoryState: categoryState),
-                  const SizedBox(height: 10),
-                  const _OfferCarousel(),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Most Booked',
-                    style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 14,
                       color: Colors.black,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 4),
+                  _CategoryGrid(categoryState: categoryState),
+                  const SizedBox(height: 12),
+                  const _OfferCarousel(),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Most Booked',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.black,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   SizedBox(
-                    height: 185,
+                    height: 178,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
                       physics: const BouncingScrollPhysics(),
@@ -169,9 +169,9 @@ class _CategoryGridState extends ConsumerState<_CategoryGrid> {
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        mainAxisSpacing: 12,
+        mainAxisSpacing: 10,
         crossAxisSpacing: 10,
-        childAspectRatio: 0.78,
+        childAspectRatio: 0.86,
       ),
       itemBuilder: (context, index) {
         final item = categories[index];
@@ -401,14 +401,14 @@ class _TopHeaderState extends ConsumerState<_TopHeader> {
                                 'Hello $name',
                                 style: const TextStyle(
                                   color: Colors.white,
-                                  fontSize: 30,
+                                  fontSize: 19,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
                               const SizedBox(width: 2),
                               const Icon(
                                 Icons.keyboard_arrow_down,
-                                size: 16,
+                                size: 18,
                                 color: Colors.white,
                               ),
                             ],
@@ -422,7 +422,7 @@ class _TopHeaderState extends ConsumerState<_TopHeader> {
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                               color: Color(0xFFB5C5D5),
-                              fontSize: 12,
+                              fontSize: 12.5,
                               fontWeight: FontWeight.w400,
                             ),
                           ),
@@ -507,35 +507,35 @@ class _TopHeaderState extends ConsumerState<_TopHeader> {
           ),
           const SizedBox(height: 16),
           Container(
-            height: 52,
+            height: 46,
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
               children: [
-                const SizedBox(width: 14),
-                const Icon(Icons.search, size: 21, color: Color(0xFF8796A5)),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
+                const Icon(Icons.search, size: 19, color: Color(0xFF8796A5)),
+                const SizedBox(width: 8),
                 const Expanded(
                   child: Text(
                     'Search services...',
                     style: TextStyle(
                       color: Color(0xFF97A3AF),
-                      fontSize: 14,
+                      fontSize: 13,
                       fontWeight: FontWeight.w400,
                     ),
                   ),
                 ),
                 Container(
-                  margin: const EdgeInsets.only(right: 10),
-                  height: 28,
-                  width: 28,
+                  margin: const EdgeInsets.only(right: 8),
+                  height: 24,
+                  width: 24,
                   decoration: const BoxDecoration(
                     color: Color(0xFF11C5BB),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.mic, color: Colors.white, size: 16),
+                  child: const Icon(Icons.mic, color: Colors.white, size: 14),
                 ),
               ],
             ),

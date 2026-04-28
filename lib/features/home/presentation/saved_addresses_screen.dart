@@ -66,52 +66,39 @@ class _SavedAddressesScreenState extends ConsumerState<SavedAddressesScreen> {
       return;
     }
 
-    if (result != null) {
-      AppToast.success('Address saved successfully');
-      await _loadAddresses();
+    if (result is AddressDraft) {
+      final saved = await Navigator.of(context).push<bool>(
+        MaterialPageRoute<bool>(
+          builder: (_) => EditAddressScreen(initialDraft: result),
+        ),
+      );
+
+      if (saved == true) {
+        AppToast.success('Address saved successfully');
+        await _loadAddresses();
+      }
     }
   }
 
   Future<void> _openEditAddressFlow(SavedAddress address) async {
-    setState(() {
-      _editingAddressId = address.id;
-    });
-
     try {
-      final savedAddress = await ref
-          .read(addressRepositoryProvider)
-          .getAddressById(address.id);
-      if (!mounted) {
-        return;
-      }
-
       final result = await Navigator.of(context).push<bool>(
         MaterialPageRoute<bool>(
           builder: (_) => EditAddressScreen(
-            initialDraft: savedAddress.toDraft(),
-            addressId: savedAddress.id,
+            initialDraft: address.toDraft(),
+            addressId: address.id,
           ),
         ),
       );
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       if (result == true) {
         await _loadAddresses();
       }
     } catch (error) {
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
       AppToast.error(error.toString());
-    } finally {
-      if (mounted) {
-        setState(() {
-          _editingAddressId = null;
-        });
-      }
     }
   }
 

@@ -36,6 +36,8 @@ class PartnerApiEndpoint {
   static const String uploadPolice = 'partner/kyc/upload-police';
 
   static const String earningsSummary = 'partner/earnings/summary';
+
+  static String bookingById(int bookingId) => 'partner/bookings/$bookingId';
 }
 
 class HomeApiEndpoint {
@@ -51,6 +53,8 @@ class UserApiEndpoint {
   static const String me = 'user/me';
   static const String profile = 'user/profile';
   static const String addresses = 'user/addresses';
+
+  static String bookingById(int bookingId) => 'user/bookings/$bookingId';
 
   static String addressById(int id) => 'user/addresses/$id';
 }
@@ -74,4 +78,11 @@ class BookingRequestApiEndpoint {
   BookingRequestApiEndpoint._();
 
   static const String createFromCart = 'booking-requests/create-from-cart';
+}
+
+class PaymentApiEndpoint {
+  PaymentApiEndpoint._();
+
+  static const String initiate = 'payments/initiate';
+  static const String createOrder = 'payments/create-order';
 }

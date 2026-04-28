@@ -1,44 +1,16 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
-Future<bool> showSearchPartnerDialog(BuildContext context) async {
-  final result = await showDialog<bool>(
+Future<void> showSearchPartnerDialog(BuildContext context) async {
+  await showDialog<void>(
     context: context,
     barrierDismissible: false,
     barrierColor: Colors.black54,
     builder: (_) => const _SearchPartnerDialog(),
   );
-
-  return result ?? false;
 }
 
-class _SearchPartnerDialog extends StatefulWidget {
+class _SearchPartnerDialog extends StatelessWidget {
   const _SearchPartnerDialog();
-
-  @override
-  State<_SearchPartnerDialog> createState() => _SearchPartnerDialogState();
-}
-
-class _SearchPartnerDialogState extends State<_SearchPartnerDialog> {
-  Timer? _timer;
-
-  @override
-  void initState() {
-    super.initState();
-    _timer = Timer(const Duration(seconds: 5), () {
-      if (!mounted) {
-        return;
-      }
-      Navigator.of(context).pop(true);
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,18 +26,6 @@ class _SearchPartnerDialogState extends State<_SearchPartnerDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Align(
-              alignment: Alignment.topRight,
-              child: InkWell(
-                onTap: () => Navigator.of(context).pop(false),
-                borderRadius: BorderRadius.circular(12),
-                child: const Padding(
-                  padding: EdgeInsets.all(5),
-                  child: Icon(Icons.close, size: 18, color: Color(0xFF111827)),
-                ),
-              ),
-            ),
-            const SizedBox(height: 4),
             Container(
               width: 104,
               height: 104,

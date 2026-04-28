@@ -13,6 +13,7 @@ class AuthRepository {
     final response = await _apiClient.postJson(
       AuthApiEndpoint.login,
       body: <String, dynamic>{'phone': phone},
+      showSuccessToast: false,
     );
 
     final loginResponse = LoginResponse.fromJson(response);

@@ -40,7 +40,7 @@ class MostBookedCard extends ConsumerWidget {
 
     return Container(
       width: 134,
-      padding: const EdgeInsets.fromLTRB(7, 7, 7, 8),
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 9),
       decoration: BoxDecoration(
         color: const Color(0xFFF6F7F9),
         borderRadius: BorderRadius.circular(12),
@@ -63,7 +63,7 @@ class MostBookedCard extends ConsumerWidget {
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 9),
           Text(
             title,
             maxLines: 1,
@@ -96,7 +96,7 @@ class MostBookedCard extends ConsumerWidget {
               Text(
                 price,
                 style: const TextStyle(
-                  fontSize: 11,
+                  fontSize: 10.5,
                   height: 1.1,
                   fontWeight: FontWeight.w700,
                   color: Color(0xFF1E2632),

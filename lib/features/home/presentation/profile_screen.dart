@@ -7,6 +7,7 @@ import 'help_support_screen.dart';
 import 'policies_screen.dart';
 import 'saved_addresses_screen.dart';
 import 'user_profile_screen.dart';
+import 'bookings_orders_screen.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -86,7 +87,11 @@ class ProfileScreen extends ConsumerWidget {
                     iconBg: const Color(0xFF0A8A2A),
                     title: 'Booking & Orders',
                     subtitle: 'View your past booking & orders',
-                    onTap: _noop,
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const BookingsOrdersScreen(),
+                      ),
+                    ),
                   ),
                   const _MenuDivider(),
                   _ProfileMenuTile(

@@ -8,10 +8,11 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../../app/utils/app_toast.dart';
 import '../data/address_models.dart';
 import '../data/google_maps_service.dart';
-import 'edit_address_screen.dart';
 
 class AddressLocationPickerScreen extends ConsumerStatefulWidget {
-  const AddressLocationPickerScreen({super.key});
+  const AddressLocationPickerScreen({super.key, this.initialDraft});
+
+  final AddressDraft? initialDraft;
 
   @override
   ConsumerState<AddressLocationPickerScreen> createState() =>
@@ -25,20 +26,30 @@ class _AddressLocationPickerScreenState
   final GoogleMapsService _mapsService = GoogleMapsService();
 
   GoogleMapController? _mapController;
-  AddressDraft _draft = const AddressDraft(
-    formattedAddress: 'Loading location...',
-    city: '',
-    pinCode: '',
-    latitude: 26.9124,
-    longitude: 75.7873,
-  );
+  late AddressDraft _draft;
+  late LatLng _selectedPosition;
   bool _isLoadingLocation = true;
+  bool _isUpdatingLocation = false;
   bool _showMyLocation = false;
 
   @override
   void initState() {
     super.initState();
-    Future.microtask(_initializeLocation);
+    _draft =
+        widget.initialDraft ??
+        const AddressDraft(
+          formattedAddress: 'Loading location...',
+          city: '',
+          pinCode: '',
+          latitude: 26.9124,
+          longitude: 75.7873,
+        );
+    _selectedPosition = LatLng(_draft.latitude, _draft.longitude);
+    if (widget.initialDraft == null) {
+      Future.microtask(_initializeLocation);
+    } else {
+      _isLoadingLocation = false;
+    }
   }
 
   @override
@@ -97,7 +108,17 @@ class _AddressLocationPickerScreenState
     LatLng position, {
     bool moveCamera = false,
   }) async {
+    _selectedPosition = position;
+
     try {
+      if (mounted) {
+        setState(() {
+          _isUpdatingLocation = true;
+        });
+      } else {
+        _isUpdatingLocation = true;
+      }
+
       final draft = await _mapsService.reverseGeocode(position);
       if (!mounted) {
         return;
@@ -105,6 +126,8 @@ class _AddressLocationPickerScreenState
 
       setState(() {
         _draft = draft;
+        _selectedPosition = position;
+        _isUpdatingLocation = false;
       });
 
       if (moveCamera && _mapController != null) {
@@ -123,6 +146,8 @@ class _AddressLocationPickerScreenState
           latitude: position.latitude,
           longitude: position.longitude,
         );
+        _selectedPosition = position;
+        _isUpdatingLocation = false;
       });
       AppToast.error(error.toString());
     }
@@ -150,20 +175,8 @@ class _AddressLocationPickerScreenState
     }
   }
 
-  Future<void> _openEditAddress() async {
-    final result = await Navigator.of(context).push<dynamic>(
-      MaterialPageRoute<dynamic>(
-        builder: (_) => EditAddressScreen(initialDraft: _draft),
-      ),
-    );
-
-    if (!mounted) {
-      return;
-    }
-
-    if (result != null) {
-      Navigator.of(context).pop(result);
-    }
+  void _confirmSelection() {
+    Navigator.of(context).pop(_draft);
   }
 
   @override
@@ -193,7 +206,7 @@ class _AddressLocationPickerScreenState
           Positioned.fill(
             child: GoogleMap(
               initialCameraPosition: CameraPosition(
-                target: LatLng(_draft.latitude, _draft.longitude),
+                target: _selectedPosition,
                 zoom: 15,
               ),
               onMapCreated: (controller) => _mapController = controller,
@@ -202,15 +215,24 @@ class _AddressLocationPickerScreenState
               zoomControlsEnabled: false,
               mapToolbarEnabled: false,
               compassEnabled: false,
-              markers: <Marker>{
-                Marker(
-                  markerId: const MarkerId('selected-location'),
-                  position: LatLng(_draft.latitude, _draft.longitude),
-                  draggable: true,
-                  onDragEnd: (position) => _setSelectedPosition(position),
-                ),
+              markers: const <Marker>{},
+              onCameraMove: (position) {
+                _selectedPosition = position.target;
               },
+              onCameraIdle: () => _setSelectedPosition(_selectedPosition),
               onTap: (position) => _setSelectedPosition(position),
+            ),
+          ),
+          const Center(
+            child: IgnorePointer(
+              child: Padding(
+                padding: EdgeInsets.only(bottom: 44),
+                child: Icon(
+                  Icons.location_on,
+                  size: 48,
+                  color: Color(0xFFEF4444),
+                ),
+              ),
             ),
           ),
           Positioned(
@@ -323,7 +345,7 @@ class _AddressLocationPickerScreenState
                             const Icon(
                               Icons.location_on,
                               size: 18,
-                              color: Color(0xFF16A34A),
+                              color: Color(0xFFEF4444),
                             ),
                             const SizedBox(width: 8),
                             Expanded(
@@ -358,7 +380,7 @@ class _AddressLocationPickerScreenState
                           child: FilledButton(
                             onPressed: _isLoadingLocation
                                 ? null
-                                : _openEditAddress,
+                                : _confirmSelection,
                             style: FilledButton.styleFrom(
                               backgroundColor: const Color(0xFF0B2A4A),
                               shape: RoundedRectangleBorder(
@@ -378,6 +400,10 @@ class _AddressLocationPickerScreenState
                       ],
                     ),
                   ),
+                  if (_isUpdatingLocation) ...[
+                    const SizedBox(height: 10),
+                    const LinearProgressIndicator(minHeight: 2),
+                  ],
                 ],
               ),
             ),
