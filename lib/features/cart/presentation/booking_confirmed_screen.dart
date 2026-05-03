@@ -1,11 +1,15 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:flutter/services.dart';
+import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import '../../../app/utils/app_toast.dart';
+import '../../auth/application/auth_provider.dart';
+import '../../../network/api_endpoint.dart';
 import '../application/cart_provider.dart';
 import '../modal/booking_details_modal.dart';
 import '../modal/cart_summary_modal.dart';
@@ -39,6 +43,13 @@ class _BookingConfirmedScreenState
   bool _isPaying = false;
   bool _paymentCompleted = false;
   bool _isLoadingBookingDetails = false;
+  bool _isConfirmingPayment = false;
+  
+  // Socket related variables
+  io.Socket? _bookingSocket;
+  Timer? _pollingTimer;
+  bool _socketListenersAttached = false;
+  int? _pendingUserId;
 
   @override
   void initState() {
@@ -62,17 +73,22 @@ class _BookingConfirmedScreenState
     debugPrint('[BOOKING_SCREEN] ===== END INIT =====');
 
     _bookingDetails = widget.bookingDetails;
-    unawaited(_loadUserBookingDetails());
+    // Don't load booking details immediately - socket will handle it
 
     _razorpay = Razorpay();
     _razorpay.on(Razorpay.EVENT_PAYMENT_SUCCESS, _handlePaymentSuccess);
     _razorpay.on(Razorpay.EVENT_PAYMENT_ERROR, _handlePaymentError);
     _razorpay.on(Razorpay.EVENT_EXTERNAL_WALLET, _handleExternalWallet);
+    
+    // Initialize socket connection
+    unawaited(_ensureBookingSocketConnected());
   }
 
   @override
   void dispose() {
     _razorpay.clear();
+    _pollingTimer?.cancel();
+    _bookingSocket?.dispose();
     super.dispose();
   }
 
@@ -83,27 +99,20 @@ class _BookingConfirmedScreenState
 
     setState(() {
       _isPaying = false;
-      _paymentCompleted = true;
+      _isConfirmingPayment = true; // Show "Confirming payment..." state
     });
 
-    await _loadUserBookingDetails();
-    await Future<void>.delayed(const Duration(seconds: 1));
+    debugPrint(
+      '[PAYMENT_SUCCESS] Payment successful. '
+      'Order ID: ${response.orderId}, Payment ID: ${response.paymentId}',
+    );
+    debugPrint('[PAYMENT_SUCCESS] Now waiting for socket event or polling...');
 
-    if (mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute<void>(
-          builder: (_) => BookingTrackingScreen(
-            summary: widget.summary,
-            bookingId: widget.bookingId,
-            bookingDetails: _bookingDetails ?? widget.bookingDetails,
-            partnerDetails:
-                (_bookingDetails ?? widget.bookingDetails)
-                    ?.toPartnerDetailsMap() ??
-                widget.partnerDetails,
-          ),
-        ),
-      );
-    }
+    // Start polling as fallback (every 2 seconds)
+    _startPollingForBookingConfirmation();
+
+    // Socket event will handle the completion via _onBookingConfirmedViaSocket
+    // If socket doesn't fire within the polling timeout, polling will navigate
   }
 
   void _handlePaymentError(PaymentFailureResponse response) {
@@ -184,6 +193,259 @@ class _BookingConfirmedScreenState
     );
   }
 
+  // SOCKET CONNECTION & LISTENERS
+  Future<void> _ensureBookingSocketConnected() async {
+    if (_bookingSocket != null) {
+      if (!(_bookingSocket!.connected)) {
+        _bookingSocket!.connect();
+      }
+      return;
+    }
+
+    final token = await ref.read(sessionManagerProvider).accessToken;
+    if (token == null || token.trim().isEmpty) {
+      debugPrint('[SOCKET] No auth token available');
+      return;
+    }
+
+    final sessionData = await ref.read(sessionManagerProvider).getSessionData();
+    _pendingUserId = _toInt(sessionData['userId']);
+
+    _bookingSocket = io.io(
+      ApiEndpoint.socketUrl,
+      io.OptionBuilder()
+          .setTransports(<String>['websocket', 'polling'])
+          .setPath('/socket.io')
+          .enableForceNew()
+          .disableReconnection()
+          .setAuth(<String, dynamic>{'token': token})
+          .setExtraHeaders(<String, dynamic>{'Authorization': 'Bearer $token'})
+          .build(),
+    );
+
+    if (!_socketListenersAttached) {
+      _registerBookingSocketListeners();
+      _socketListenersAttached = true;
+    }
+
+    _bookingSocket!.connect();
+    debugPrint('[SOCKET][PAYMENT] Socket connected for booking confirmation');
+  }
+
+  void _registerBookingSocketListeners() {
+    final socket = _bookingSocket;
+    if (socket == null) {
+      return;
+    }
+
+    socket.onConnect((_) {
+      debugPrint('[SOCKET][PAYMENT] Connected');
+    });
+
+    socket.onConnectError((error) {
+      debugPrint('[SOCKET][PAYMENT] Connect error: $error');
+    });
+
+    socket.onError((error) {
+      debugPrint('[SOCKET][PAYMENT] Socket error: $error');
+    });
+
+    socket.onDisconnect((reason) {
+      debugPrint('[SOCKET][PAYMENT] Disconnected: $reason');
+    });
+
+    // Listen for all possible booking confirmation events
+    const bookingConfirmedEvents = <String>[
+      'booking:accepted',
+      'booking_accepted',
+      'booking-accepted',
+      'bookingAccepted',
+      'booking_confirmed',
+      'booking-confirmed',
+      'bookingConfirmed',
+      'booking_payment_confirmed',
+      'booking-payment-confirmed',
+      'bookingPaymentConfirmed',
+      'booking_status_updated',
+      'booking-status-updated',
+      'bookingStatusUpdated',
+    ];
+
+    for (final eventName in bookingConfirmedEvents) {
+      socket.on(eventName, _onBookingConfirmedViaSocket);
+    }
+
+    debugPrint('[SOCKET][PAYMENT] Socket listeners registered');
+  }
+
+  Future<void> _onBookingConfirmedViaSocket(dynamic payload) async {
+    if (!_isConfirmingPayment) {
+      return;
+    }
+
+    final map = _normalizeEventPayload(payload);
+    if (map == null) {
+      return;
+    }
+
+    debugPrint('[SOCKET][PAYMENT] ===== BOOKING CONFIRMATION EVENT =====');
+    debugPrint('[SOCKET][PAYMENT] Full payload: $map');
+
+    final bookingId = _toInt(
+      map['bookingId'] ??
+          map['id'] ??
+          map['acceptedBookingId'] ??
+          (map['booking'] is Map<String, dynamic>
+              ? (map['booking'] as Map<String, dynamic>)['id']
+              : null),
+    );
+
+    if (bookingId == null || bookingId <= 0 || bookingId != widget.bookingId) {
+      debugPrint(
+        '[SOCKET][PAYMENT] Ignored: booking id mismatch (expected=${widget.bookingId}, got=$bookingId)',
+      );
+      return;
+    }
+
+    debugPrint('[SOCKET][PAYMENT] ✓ Booking confirmed via socket: $bookingId');
+    debugPrint('[SOCKET][PAYMENT] ===== END EVENT =====');
+
+    // Stop polling since socket confirmed
+    _pollingTimer?.cancel();
+
+    // Load latest booking details and navigate
+    await _loadUserBookingDetails();
+    _navigateToBookingTracking();
+  }
+
+  // POLLING (Fallback mechanism)
+  void _startPollingForBookingConfirmation() {
+    debugPrint('[POLLING] Starting polling for booking confirmation...');
+    
+    _pollingTimer?.cancel(); // Cancel any existing timer
+    _pollingTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+      if (!_isConfirmingPayment || widget.bookingId <= 0) {
+        _pollingTimer?.cancel();
+        return;
+      }
+
+      try {
+        final repository = ref.read(cartRepositoryProvider);
+        final bookingDetails = await repository.getUserBooking(
+          bookingId: widget.bookingId,
+        );
+
+        debugPrint(
+          '[POLLING] Booking status: ${bookingDetails?.status}',
+        );
+
+        if (bookingDetails?.status == 'CONFIRMED' ||
+            bookingDetails?.status == 'ACCEPTED' ||
+            bookingDetails?.statusLabel?.toUpperCase().contains('CONFIRMED') ==
+                true) {
+          debugPrint(
+            '[POLLING] ✓ Booking confirmed via polling',
+          );
+          _pollingTimer?.cancel();
+
+          if (mounted && _isConfirmingPayment) {
+            setState(() {
+              _bookingDetails = bookingDetails;
+            });
+            _navigateToBookingTracking();
+          }
+        }
+      } catch (error) {
+        debugPrint('[POLLING] Error: $error');
+      }
+    });
+  }
+
+  Future<void> _navigateToBookingTracking() async {
+    if (!mounted || !_isConfirmingPayment) {
+      return;
+    }
+
+    _pollingTimer?.cancel();
+
+    setState(() {
+      _isConfirmingPayment = false;
+      _paymentCompleted = true;
+    });
+
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+
+    if (mounted) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => BookingTrackingScreen(
+            summary: widget.summary,
+            bookingId: widget.bookingId,
+            bookingDetails: _bookingDetails ?? widget.bookingDetails,
+            partnerDetails:
+                (_bookingDetails ?? widget.bookingDetails)
+                    ?.toPartnerDetailsMap() ??
+                widget.partnerDetails,
+          ),
+        ),
+      );
+    }
+  }
+
+  // HELPER METHODS
+  Map<String, dynamic>? _normalizeEventPayload(dynamic payload) {
+    final root = _toMap(payload);
+    if (root == null) {
+      return null;
+    }
+
+    final nestedData = root['data'];
+    if (nestedData is Map<String, dynamic>) {
+      return nestedData;
+    }
+    if (nestedData is Map) {
+      return nestedData.map((key, value) => MapEntry(key.toString(), value));
+    }
+
+    return root;
+  }
+
+  Map<String, dynamic>? _toMap(dynamic payload) {
+    if (payload is Map<String, dynamic>) {
+      return payload;
+    }
+    if (payload is Map) {
+      return payload.map((key, value) => MapEntry(key.toString(), value));
+    }
+    if (payload is String) {
+      try {
+        final decoded = jsonDecode(payload);
+        if (decoded is Map<String, dynamic>) {
+          return decoded;
+        }
+        if (decoded is Map) {
+          return decoded.map((key, value) => MapEntry(key.toString(), value));
+        }
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  int? _toInt(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is String) {
+      return int.tryParse(value);
+    }
+    if (value is double) {
+      return value.toInt();
+    }
+    return null;
+  }
+
   Future<void> _onPayNowTap() async {
     if (_isPaying) {
       return;
@@ -235,38 +497,272 @@ class _BookingConfirmedScreenState
   }
 
   void _onCancelBookingTap() {
+    // First dialog: Confirmation
     showDialog<bool>(
       context: context,
-      builder: (BuildContext dialogContext) => AlertDialog(
-        title: const Text('Cancel Booking?'),
-        content: const Text(
-          'Are you sure you want to cancel this booking? '
-          'The refund will be processed according to the cancellation policy.',
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) => Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Are you sure you want to cancel the booking?',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF111827),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(true),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF0B1F3A),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: const Text(
+                        'Yes',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(false),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Color(0xFFD1D5DB)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: const Text(
+                        'No',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF111827),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Keep Booking'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text(
-              'Cancel Booking',
-              style: TextStyle(color: Color(0xFFDC2626)),
-            ),
-          ),
-        ],
       ),
     ).then((confirmed) {
       if (confirmed == true && mounted) {
-        AppToast.success('Booking cancelled successfully');
-        Future.delayed(const Duration(seconds: 1), () {
-          if (mounted) {
-            Navigator.of(context).pop();
-          }
-        });
+        _showCancellationReasonDialog();
       }
     });
+  }
+
+  void _showCancellationReasonDialog() {
+    String? selectedReason;
+    bool isLoading = false;
+    const reasons = [
+      'Change of plans',
+      'Booked by mistake',
+      'Found an alternative',
+      'Not available at the scheduled time',
+      'Service pricing concern',
+      'Issue with service / professional',
+      'Other',
+    ];
+
+    const reasonCodes = [
+      'CHANGE_OF_PLANS',
+      'BOOKED_BY_MISTAKE',
+      'FOUND_ALTERNATIVE',
+      'NOT_AVAILABLE',
+      'PRICING_CONCERN',
+      'ISSUE_WITH_SERVICE',
+      'OTHER',
+    ];
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) => Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: StatefulBuilder(
+          builder: (context, setState) => Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Cancellation reason?',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF111827),
+                      ),
+                    ),
+                    if (!isLoading)
+                      IconButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        icon: const Icon(Icons.close, size: 24),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: 300,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: List.generate(
+                        reasons.length,
+                        (index) => Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: GestureDetector(
+                            onTap: isLoading
+                                ? null
+                                : () {
+                                    setState(() {
+                                      selectedReason = reasonCodes[index];
+                                    });
+                                  },
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 20,
+                                  height: 20,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: selectedReason == reasonCodes[index]
+                                          ? const Color(0xFF0B1F3A)
+                                          : const Color(0xFFD1D5DB),
+                                      width: 2,
+                                    ),
+                                  ),
+                                  child: selectedReason == reasonCodes[index]
+                                      ? Center(
+                                          child: Container(
+                                            width: 10,
+                                            height: 10,
+                                            decoration: const BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              color: Color(0xFF0B1F3A),
+                                            ),
+                                          ),
+                                        )
+                                      : null,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    reasons[index],
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      color: Color(0xFF111827),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: FilledButton(
+                    onPressed: (selectedReason != null && !isLoading)
+                        ? () async {
+                            setState(() {
+                              isLoading = true;
+                            });
+                            await _cancelBookingWithReason(selectedReason!);
+                            if (mounted) {
+                              Navigator.of(dialogContext).pop();
+                            }
+                          }
+                        : null,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: selectedReason != null
+                          ? const Color(0xFF0B1F3A)
+                          : const Color(0xFFD1D5DB),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      disabledBackgroundColor: const Color(0xFFD1D5DB),
+                    ),
+                    child: isLoading
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                            ),
+                          )
+                        : const Text(
+                            'Cancel Booking',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _cancelBookingWithReason(String reason) async {
+    try {
+      final repository = ref.read(cartRepositoryProvider);
+      await repository.cancelBooking(
+        bookingId: widget.bookingId,
+        reason: reason,
+      );
+
+      if (!mounted) return;
+
+      AppToast.success('Booking cancelled successfully');
+      await Future<void>.delayed(const Duration(seconds: 1));
+
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    } catch (error) {
+      if (!mounted) return;
+      AppToast.error(error.toString());
+    }
   }
 
   @override
@@ -281,7 +777,7 @@ class _BookingConfirmedScreenState
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: _paymentCompleted
+        leading: _paymentCompleted || _isConfirmingPayment
             ? null
             : IconButton(
                 onPressed: () => Navigator.of(context).pop(),
@@ -296,7 +792,11 @@ class _BookingConfirmedScreenState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              _paymentCompleted ? 'Booking Scheduled' : 'Booking Confirmed',
+              _isConfirmingPayment
+                  ? 'Confirming Payment'
+                  : _paymentCompleted
+                  ? 'Booking Scheduled'
+                  : 'Booking Confirmed',
               style: const TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w700,
@@ -305,7 +805,9 @@ class _BookingConfirmedScreenState
             ),
             SizedBox(height: 2),
             Text(
-              _paymentCompleted
+              _isConfirmingPayment
+                  ? 'Please wait while we confirm your payment'
+                  : _paymentCompleted
                   ? 'Your booking is confirmed'
                   : bookingDetails != null
                   ? 'Booking #${bookingDetails.id} • $statusLabel'
@@ -319,7 +821,9 @@ class _BookingConfirmedScreenState
         padding: const EdgeInsets.fromLTRB(13, 13, 13, 15),
         child: Column(
           children: [
-            if (_paymentCompleted)
+            if (_isConfirmingPayment)
+              _ConfirmingPaymentCard()
+            else if (_paymentCompleted)
               const _PaymentSuccessCard()
             else
               _AssignedInfoCard(bookingDetails: bookingDetails),
@@ -344,11 +848,11 @@ class _BookingConfirmedScreenState
             const SizedBox(height: 10),
             _AddressCard(summary: summary, bookingDetails: bookingDetails),
             const SizedBox(height: 10),
-            if (!_paymentCompleted) _ApplyCouponRow(),
-            if (!_paymentCompleted) const SizedBox(height: 10),
-            if (!_paymentCompleted) _BillCard(summary: summary),
-            if (!_paymentCompleted) const SizedBox(height: 10),
-            if (!_paymentCompleted)
+            if (!_paymentCompleted && !_isConfirmingPayment) _ApplyCouponRow(),
+            if (!_paymentCompleted && !_isConfirmingPayment) const SizedBox(height: 10),
+            if (!_paymentCompleted && !_isConfirmingPayment) _BillCard(summary: summary),
+            if (!_paymentCompleted && !_isConfirmingPayment) const SizedBox(height: 10),
+            if (!_paymentCompleted && !_isConfirmingPayment)
               _PendingPaymentCard(
                 total: summary.pricing.total,
                 paymentExpiresAt: bookingDetails?.paymentExpiresAt,
@@ -362,7 +866,7 @@ class _BookingConfirmedScreenState
         child: SizedBox(
           height: 58,
           child: FilledButton.icon(
-            onPressed: _isPaying
+            onPressed: _isPaying || _isConfirmingPayment
                 ? null
                 : (_paymentCompleted ? _onCancelBookingTap : _onPayNowTap),
             style: FilledButton.styleFrom(
@@ -375,7 +879,7 @@ class _BookingConfirmedScreenState
             ),
             icon: _paymentCompleted
                 ? const Icon(Icons.close, size: 19, color: Colors.white)
-                : (_isPaying
+                : (_isPaying || _isConfirmingPayment
                       ? const SizedBox(
                           width: 18,
                           height: 18,
@@ -394,7 +898,7 @@ class _BookingConfirmedScreenState
             label: Text(
               _paymentCompleted
                   ? 'Cancel Booking'
-                  : _isPaying
+                  : _isPaying || _isConfirmingPayment
                   ? 'Processing...'
                   : 'Pay Now ${formatInr(summary.pricing.total)}',
               style: const TextStyle(
@@ -405,6 +909,62 @@ class _BookingConfirmedScreenState
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ConfirmingPaymentCard extends StatelessWidget {
+  const _ConfirmingPaymentCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFBF8F3),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFFD89B)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 80,
+            height: 80,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Color(0xFFF59E0B),
+            ),
+            child: const CircularProgressIndicator(
+              strokeWidth: 3,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                Colors.white,
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Confirming Payment',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF111827),
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Please wait while we confirm your payment details',
+            style: TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'This usually takes a few seconds',
+            style: TextStyle(fontSize: 12, color: Color(0xFF9A3412)),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
   }
@@ -1226,26 +1786,79 @@ class _CancellationPolicyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _CardFrame(
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF2F2),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFECDCD)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
             'Cancellation Policy',
             style: TextStyle(
-              fontSize: 16,
+              fontSize: 14,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF0F172A),
+              color: Color(0xFF111827),
             ),
           ),
           const SizedBox(height: 12),
-          _PolicyItem(text: '100% refund if cancelled before the service'),
+          _PolicyItem(text: 'Cancel more than 12 hours before the service: 100% refund'),
           const SizedBox(height: 8),
-          _PolicyItem(text: 'Refund within 12 hours of the service: 50%'),
+          _PolicyItem(text: 'Cancel within 12 hours of the service: 50% refund'),
           const SizedBox(height: 8),
-          _PolicyItem(text: 'Cancel within 3 hours of the service: No refund'),
-          const SizedBox(height: 8),
-          _PolicyItem(text: '(100% applicable)'),
+          _PolicyItem(text: 'Cancel within 3 hours of the service: No refund (100% charges apply)'),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: () {
+                showDialog<bool>(
+                  context: context,
+                  builder: (BuildContext dialogContext) => AlertDialog(
+                    backgroundColor: Colors.white,
+                    title: const Text('Cancel Booking?'),
+                    content: const Text(
+                      'Are you sure you want to cancel this booking? '
+                      'The refund will be processed according to the cancellation policy.',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(false),
+                        child: const Text('Keep Booking'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(true),
+                        child: const Text(
+                          'Cancel Booking',
+                          style: TextStyle(color: Color(0xFFDC2626)),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                side: const BorderSide(color: Color(0xFFDC2626), width: 1.5),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text(
+                'Cancel\nBooking',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFFDC2626),
+                  height: 1.3,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -1264,13 +1877,22 @@ class _PolicyItem extends StatelessWidget {
       children: [
         const Text(
           '•',
-          style: TextStyle(fontSize: 16, color: Color(0xFF111827)),
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF111827),
+          ),
         ),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
             text,
-            style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF374151),
+              height: 1.4,
+            ),
           ),
         ),
       ],

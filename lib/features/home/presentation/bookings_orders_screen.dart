@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../cart/modal/booking_details_modal.dart';
 import '../../../network/api_client.dart';
 import '../../auth/application/auth_provider.dart';
+import 'booking_detail_screen.dart';
 
 class BookingsOrdersScreen extends ConsumerStatefulWidget {
   const BookingsOrdersScreen({super.key});
@@ -240,39 +241,47 @@ class _BookingsOrdersScreenState extends ConsumerState<BookingsOrdersScreen> {
   }
 
   Widget _buildBookingCard(BookingDetailsModal b) {
-    Color statusColor = const Color(0xFF10B981);
-    String statusLabel = b.statusLabel;
+    Color statusColor = const Color(0xFFDCFCE7);
+    Color statusTextColor = const Color(0xFF059669);
+    String statusLabel = 'In Progress';
+    bool isInProgress = true;
+
     if (b.status.toLowerCase().contains('cancel')) {
-      statusColor = const Color(0xFFFCA5A5);
-      statusLabel = 'Canceled';
+      statusColor = const Color(0xFFFFEBEE);
+      statusTextColor = const Color(0xFFDC2626);
+      statusLabel = 'Cancelled';
+      isInProgress = false;
     } else if (b.status.toLowerCase().contains('complete')) {
-      statusColor = const Color(0xFFBBF7D0);
+      statusColor = const Color(0xFFF3F4F6);
+      statusTextColor = const Color(0xFF059669);
       statusLabel = 'Completed';
+      isInProgress = false;
     }
 
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10),
-        ],
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: Text(
                   b.serviceDisplayName,
                   style: const TextStyle(
                     fontSize: 16,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF111827),
                   ),
                 ),
               ),
+              const SizedBox(width: 12),
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,
@@ -280,97 +289,178 @@ class _BookingsOrdersScreenState extends ConsumerState<BookingsOrdersScreen> {
                 ),
                 decoration: BoxDecoration(
                   color: statusColor,
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(14),
                 ),
                 child: Text(
                   statusLabel,
                   style: TextStyle(
-                    color: (statusColor.computeLuminance() > 0.5)
-                        ? const Color(0xFF064E3B)
-                        : Colors.white,
+                    color: statusTextColor,
                     fontSize: 12,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           Row(
             children: [
-              const Icon(
-                Icons.calendar_today_outlined,
+              Icon(
+                Icons.calendar_today,
                 size: 18,
-                color: Color(0xFF6B7280),
+                color: const Color(0xFF9CA3AF),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Text(
                 b.displayDateLabel,
-                style: const TextStyle(color: Color(0xFF6B7280)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              const Icon(Icons.access_time, size: 18, color: Color(0xFF6B7280)),
-              const SizedBox(width: 8),
-              Text(
-                b.displayTimeLabel,
-                style: const TextStyle(color: Color(0xFF6B7280)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              const Icon(
-                Icons.currency_rupee,
-                size: 18,
-                color: Color(0xFF6B7280),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '₹${b.finalAmount}',
-                style: const TextStyle(color: Color(0xFF6B7280)),
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF6B7280),
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),
           const SizedBox(height: 12),
           Row(
             children: [
-              TextButton(
-                onPressed: () {},
-                child: Text(
-                  'View Detail',
-                  style: TextStyle(
-                    color: const Color(0xFF10B981),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+              Icon(
+                Icons.access_time,
+                size: 18,
+                color: const Color(0xFF9CA3AF),
               ),
-              const Spacer(),
-              ElevatedButton(
-                onPressed: () {},
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0B2A4A),
-                  shape: const StadiumBorder(),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 22,
-                    vertical: 12,
-                  ),
-                  elevation: 0,
-                ),
-                child: const Text(
-                  'View Progress',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
+              const SizedBox(width: 10),
+              Text(
+                b.displayTimeLabel,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF6B7280),
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Icon(
+                Icons.currency_rupee,
+                size: 18,
+                color: const Color(0xFF9CA3AF),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                '₹${b.finalAmount}',
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF6B7280),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          if (isInProgress)
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => BookingDetailScreen(bookingId: b.id),
+                        ),
+                      );
+                    },
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      minimumSize: const Size(0, 0),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: const [
+                        Text(
+                          'View Detail',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF6B7280),
+                          ),
+                        ),
+                        SizedBox(width: 6),
+                        Icon(Icons.chevron_right, size: 18, color: Color(0xFF6B7280)),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () {},
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0B2A4A),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      elevation: 0,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: const [
+                        Text(
+                          'View Progress',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        SizedBox(width: 6),
+                        Icon(Icons.chevron_right, size: 18, color: Colors.white),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else
+            SizedBox(
+              width: double.infinity,
+              child: TextButton(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => BookingDetailScreen(bookingId: b.id),
+                    ),
+                  );
+                },
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  minimumSize: const Size(0, 0),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    Text(
+                      'View Details',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF6B7280),
+                      ),
+                    ),
+                    SizedBox(width: 6),
+                    Icon(Icons.chevron_right, size: 18, color: Color(0xFF6B7280)),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );

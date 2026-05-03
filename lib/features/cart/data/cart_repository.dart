@@ -268,6 +268,23 @@ class CartRepository {
     }
     return int.tryParse(value?.toString() ?? '');
   }
+
+  Future<Map<String, dynamic>> cancelBooking({
+    required int bookingId,
+    required String reason,
+    String? note,
+  }) async {
+    final response = await _apiClient.deleteJson(
+      'user/bookings/$bookingId/cancel',
+      requiresAuth: true,
+      body: <String, dynamic>{
+        'reason': reason,
+        if (note != null && note.isNotEmpty) 'note': note,
+      },
+    );
+
+    return response;
+  }
 }
 
 class CreateFromCartResult {

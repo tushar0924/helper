@@ -16,10 +16,11 @@ import '../../home/data/address_models.dart';
 import '../modal/booking_details_modal.dart';
 import '../modal/applied_coupons_modal.dart';
 import '../modal/cart_summary_modal.dart';
+import '../../home/presentation/saved_addresses_screen.dart';
 import '../../../network/api_endpoint.dart';
 import 'booking_confirmed_screen.dart';
-import 'widgets/apply_coupon_bottom_sheet.dart';
 import 'widgets/search_partner_dialog.dart';
+import 'widgets/apply_coupon_bottom_sheet.dart';
 import 'widgets/select_slot_screen.dart';
 
 class CartScreen extends ConsumerStatefulWidget {
@@ -134,113 +135,80 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                 child: Column(
                   children: [
                     if (items.isEmpty)
-                      _SimpleTile(
-                        child: Column(
-                          children: [
-                            const Text(
-                              'No services added yet.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Color(0xFF6B7280),
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            FilledButton(
-                              onPressed: () => Navigator.of(context).pop(),
-                              child: const Text('Continue browsing'),
-                            ),
-                          ],
+                      const _EmptyCartState()
+                    else ...[
+                      ...items.map(
+                        (item) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _CartServiceTile(item: item),
                         ),
                       ),
-                    ...items.map(
-                      (item) => Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: _CartServiceTile(item: item),
+                      const SizedBox(height: 6),
+                      _ActionCard(
+                        icon: Icons.add_box_outlined,
+                        title: 'Add more services',
+                        isPrimary: false,
+                        onTap: () => Navigator.of(context).pop(),
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    _ActionCard(
-                      icon: Icons.add_box_outlined,
-                      title: 'Add more services',
-                      isPrimary: false,
-                      onTap: () => Navigator.of(context).pop(),
-                    ),
-                    const SizedBox(height: 10),
-                    _SimpleTile(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.location_on,
-                                color: Color(0xFF0EA5E9),
-                                size: 18,
-                              ),
-                              const SizedBox(width: 8),
-                              const Text(
-                                'Service Address',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF0F172A),
-                                ),
-                              ),
-                              const Spacer(),
-                              TextButton(
-                                onPressed: state.isMutating
-                                    ? null
-                                    : _onChangeAddressTap,
-                                child: const Text('Change'),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            summary.address?.label ?? 'Not selected',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF0F172A),
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            summary.address != null
-                                ? '${summary.address!.address}, ${summary.address!.city} - ${summary.address!.pinCode}'
-                                : 'Select an address for delivery and service execution',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF6B7280),
-                              height: 1.35,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    if (hasSelectedSlot)
+                      const SizedBox(height: 10),
                       _SimpleTile(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
                               children: [
-                                const Text(
-                                  'Booking Details',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                    color: Color(0xFF0F172A),
+                                const Icon(
+                                  Icons.location_on,
+                                  color: Color(0xFF0EA5E9),
+                                  size: 18,
+                                ),
+                                const SizedBox(width: 8),
+                                const Expanded(
+                                  child: Text(
+                                    'Service address',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF0F172A),
+                                    ),
                                   ),
                                 ),
-                                const Spacer(),
                                 TextButton(
-                                  onPressed: items.isEmpty
-                                      ? null
-                                      : () => _onSelectSlotTap(summary),
+                                  onPressed: _onChangeAddressTap,
+                                  child: const Text('Change'),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            _addressSummary(summary),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      _SimpleTile(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.schedule,
+                                  color: Color(0xFFF59E0B),
+                                  size: 18,
+                                ),
+                                const SizedBox(width: 8),
+                                const Expanded(
+                                  child: Text(
+                                    'Selected slot',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF0F172A),
+                                    ),
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: () => _onSelectSlotTap(summary),
                                   child: const Text('Change Slot'),
                                 ),
                               ],
@@ -260,66 +228,67 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                           ],
                         ),
                       ),
-                    const SizedBox(height: 10),
-                    _AppliedCouponsCard(
-                      appliedCouponsAsync: appliedCouponsAsync,
-                      summary: summary,
-                      onTapApplyCoupon: () async {
-                        await Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const ApplyCouponScreen(),
-                          ),
-                        );
-                        if (!mounted) {
-                          return;
-                        }
-
-                        ref.invalidate(appliedCouponsProvider);
-                        await ref
-                            .read(cartProvider.notifier)
-                            .loadSummary(forceRefresh: true);
-                      },
-                    ),
-                    const SizedBox(height: 10),
-                    _SimpleTile(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Bill Details',
-                            style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF0F172A),
+                      const SizedBox(height: 10),
+                      _AppliedCouponsCard(
+                        appliedCouponsAsync: appliedCouponsAsync,
+                        summary: summary,
+                        onTapApplyCoupon: () async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => const ApplyCouponScreen(),
                             ),
-                          ),
-                          const SizedBox(height: 12),
-                          _billRow(
-                            'Item Total',
-                            formatInr(summary.pricing.itemTotal),
-                          ),
-                          _billRow(
-                            'Add-ons',
-                            formatInr(summary.pricing.addonTotal),
-                          ),
-                          _billRow(
-                            'Discount',
-                            '-${formatInr(summary.pricing.discount.abs())}',
-                            valueColor: const Color(0xFF16A34A),
-                          ),
-                          _billRow(
-                            'Tax & fee',
-                            formatInr(summary.pricing.taxAndFee),
-                          ),
-                          const Divider(height: 24, color: Color(0xFFE5E7EB)),
-                          _billRow(
-                            'Total Amount',
-                            formatInr(summary.pricing.total),
-                            isTotal: true,
-                          ),
-                        ],
+                          );
+                          if (!mounted) {
+                            return;
+                          }
+
+                          ref.invalidate(appliedCouponsProvider);
+                          await ref
+                              .read(cartProvider.notifier)
+                              .loadSummary(forceRefresh: true);
+                        },
                       ),
-                    ),
+                      const SizedBox(height: 10),
+                      _SimpleTile(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Bill Details',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            _billRow(
+                              'Item Total',
+                              formatInr(summary.pricing.itemTotal),
+                            ),
+                            _billRow(
+                              'Add-ons',
+                              formatInr(summary.pricing.addonTotal),
+                            ),
+                            _billRow(
+                              'Discount',
+                              '-${formatInr(summary.pricing.discount.abs())}',
+                              valueColor: const Color(0xFF16A34A),
+                            ),
+                            _billRow(
+                              'Tax & fee',
+                              formatInr(summary.pricing.taxAndFee),
+                            ),
+                            const Divider(height: 24, color: Color(0xFFE5E7EB)),
+                            _billRow(
+                              'Total Amount',
+                              formatInr(summary.pricing.total),
+                              isTotal: true,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -448,7 +417,11 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     }
 
     if (bookingId == null || bookingId <= 0) {
-      AppToast.error('No helper accepted your request. Please try again.');
+      final shouldRetry = await showNoPartnerAcceptedDialog(context);
+      if (shouldRetry && mounted) {
+        await Future<void>.delayed(Duration.zero);
+        await _onSearchPartnerTap(summary);
+      }
       return;
     }
 
@@ -458,8 +431,15 @@ class _CartScreenState extends ConsumerState<CartScreen> {
           .read(cartRepositoryProvider)
           .getPartnerBooking(bookingId: bookingId);
       _partnerDetails = bookingDetails.toPartnerDetailsMap();
+      
+      if (mounted) {
+        AppToast.success('Partner request accepted');
+      }
     } catch (error) {
       debugPrint('[BOOKING] Failed to load booking details: $error');
+      if (mounted) {
+        AppToast.error('Failed to load booking details');
+      }
     }
 
     debugPrint('[BOOKING] ===== REDIRECTING TO BOOKING CONFIRMED SCREEN =====');
@@ -788,6 +768,13 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       ),
       builder: (_) => _AddressSelectionBottomSheet(
         currentAddressId: ref.read(cartProvider).summary?.address?.id,
+        onAddNewAddress: () async {
+          await Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const SavedAddressesScreen(),
+            ),
+          );
+        },
       ),
     );
 
@@ -883,6 +870,29 @@ class _CartScreenState extends ConsumerState<CartScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _addressSummary(CartSummaryModal summary) {
+    final address = summary.address;
+    if (address == null) {
+      return const Text(
+        'Service address not selected',
+        style: TextStyle(
+          fontSize: 13,
+          color: Color(0xFF6B7280),
+          height: 1.35,
+        ),
+      );
+    }
+
+    return Text(
+      '${address.address}, ${address.city} - ${address.pinCode}',
+      style: const TextStyle(
+        fontSize: 13,
+        color: Color(0xFF111827),
+        height: 1.35,
+      ),
     );
   }
 }
@@ -1131,9 +1141,13 @@ int _parseInt(Object? value) {
 }
 
 class _AddressSelectionBottomSheet extends ConsumerStatefulWidget {
-  const _AddressSelectionBottomSheet({this.currentAddressId});
+  const _AddressSelectionBottomSheet({
+    this.currentAddressId,
+    required this.onAddNewAddress,
+  });
 
   final int? currentAddressId;
+  final Future<void> Function() onAddNewAddress;
 
   @override
   ConsumerState<_AddressSelectionBottomSheet> createState() =>
@@ -1217,7 +1231,7 @@ class _AddressSelectionBottomSheetState
       child: Padding(
         padding: EdgeInsets.fromLTRB(
           16,
-          12,
+          10,
           16,
           16 + MediaQuery.of(context).viewInsets.bottom,
         ),
@@ -1225,26 +1239,52 @@ class _AddressSelectionBottomSheetState
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(
-              child: Container(
-                width: 42,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFD1D5DB),
-                  borderRadius: BorderRadius.circular(100),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Select Service Address',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF111827),
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(
+                    Icons.close,
+                    size: 22,
+                    color: Color(0xFF111827),
+                  ),
+                  splashRadius: 20,
+                ),
+              ],
+            ),
+            InkWell(
+              onTap: () async {
+                Navigator.of(context).pop();
+                await widget.onAddNewAddress();
+              },
+              child: const Padding(
+                padding: EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  children: [
+                    Icon(Icons.add, size: 20, color: Color(0xFF0B1F3A)),
+                    SizedBox(width: 8),
+                    Text(
+                      'Add New Address',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF0B1F3A),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-            const SizedBox(height: 14),
-            const Text(
-              'Select Service Address',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF0F172A),
-              ),
-            ),
-            const SizedBox(height: 12),
             if (_isLoading)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 24),
@@ -1312,29 +1352,46 @@ class _AddressSelectionBottomSheetState
                       child: Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
+                          color: Colors.white,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
                             color: isSelected
-                                ? const Color(0xFF0B1F3A)
-                                : const Color(0xFFE5E7EB),
+                                ? const Color(0xFF111827)
+                                : const Color(0xFFD1D5DB),
                           ),
                         ),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Radio<int>(
-                              value: address.id,
-                              groupValue: _selectedAddressId,
-                              onChanged: (value) {
-                                if (value == null) {
-                                  return;
-                                }
-                                setState(() {
-                                  _selectedAddressId = value;
-                                });
-                              },
+                            Padding(
+                              padding: const EdgeInsets.only(top: 1),
+                              child: Container(
+                                width: 18,
+                                height: 18,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? const Color(0xFF111827)
+                                        : const Color(0xFF94A3B8),
+                                    width: 1.8,
+                                  ),
+                                ),
+                                child: isSelected
+                                    ? Center(
+                                        child: Container(
+                                          width: 8,
+                                          height: 8,
+                                          decoration: const BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: Color(0xFF111827),
+                                          ),
+                                        ),
+                                      )
+                                    : null,
+                              ),
                             ),
-                            const SizedBox(width: 4),
+                            const SizedBox(width: 12),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1376,7 +1433,7 @@ class _AddressSelectionBottomSheetState
                 style: FilledButton.styleFrom(
                   backgroundColor: const Color(0xFF0B1F3A),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                 ),
                 child: _isSaving
@@ -1390,7 +1447,14 @@ class _AddressSelectionBottomSheetState
                           ),
                         ),
                       )
-                    : const Text('Save Address'),
+                    : const Text(
+                        'Save Address',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
               ),
             ),
           ],
@@ -1503,6 +1567,72 @@ class _DashedRoundedRectPainter extends CustomPainter {
         oldDelegate.gap != gap ||
         oldDelegate.dash != dash ||
         oldDelegate.radius != radius;
+  }
+}
+
+class _EmptyCartState extends StatelessWidget {
+  const _EmptyCartState();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: MediaQuery.of(context).size.height * 0.72,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.shopping_cart_outlined,
+              size: 112,
+              color: Color(0xFF1F2937),
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              'Your Cart Is Currently Empty',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF111111),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Look like you haven’t added anything to your cart',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                height: 1.35,
+                color: Color(0xFF111111),
+              ),
+            ),
+            const SizedBox(height: 26),
+            SizedBox(
+              width: 145,
+              height: 38,
+              child: FilledButton(
+                onPressed: () => Navigator.of(context).pop(),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF0B1F3A),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                child: const Text(
+                  'Add Now',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

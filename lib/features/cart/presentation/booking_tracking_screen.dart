@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../../app/utils/app_toast.dart';
+import '../application/cart_provider.dart';
 import '../modal/booking_details_modal.dart';
 import '../modal/cart_summary_modal.dart';
 
@@ -149,31 +150,255 @@ class _BookingTrackingScreenState extends ConsumerState<BookingTrackingScreen> {
             // Cancellation Policy
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _CancellationPolicyCard(),
+              child: _CancellationPolicyCard(onCancelPressed: _onCancelBookingTap),
             ),
             const SizedBox(height: 20),
           ],
         ),
       ),
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        child: SizedBox(
-          height: 54,
-          child: FilledButton(
-            onPressed: _onCancelBookingTap,
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFDC2626),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+    );
+  }
+
+  void _onCancelBookingTap() {
+    // First dialog: Confirmation
+    showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) => Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Are you sure you want to cancel the booking?',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF111827),
+                ),
               ),
-            ),
-            child: const Text(
-              'Cancel Booking',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(true),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF0B1F3A),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: const Text(
+                        'Yes',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(false),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Color(0xFFD1D5DB)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: const Text(
+                        'No',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF111827),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
+            ],
+          ),
+        ),
+      ),
+    ).then((confirmed) {
+      if (confirmed == true && mounted) {
+        _showCancellationReasonDialog();
+      }
+    });
+  }
+
+  void _showCancellationReasonDialog() {
+    String? selectedReason;
+    bool isLoading = false;
+    const reasons = [
+      'Change of plans',
+      'Booked by mistake',
+      'Found an alternative',
+      'Not available at the scheduled time',
+      'Service pricing concern',
+      'Issue with service / professional',
+      'Other',
+    ];
+
+    const reasonCodes = [
+      'CHANGE_OF_PLANS',
+      'BOOKED_BY_MISTAKE',
+      'FOUND_ALTERNATIVE',
+      'NOT_AVAILABLE',
+      'PRICING_CONCERN',
+      'ISSUE_WITH_SERVICE',
+      'OTHER',
+    ];
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) => Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: StatefulBuilder(
+          builder: (context, setState) => Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Cancellation reason?',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF111827),
+                      ),
+                    ),
+                    if (!isLoading)
+                      IconButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        icon: const Icon(Icons.close, size: 24),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: 300,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: List.generate(
+                        reasons.length,
+                        (index) => Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: GestureDetector(
+                            onTap: isLoading
+                                ? null
+                                : () {
+                                    setState(() {
+                                      selectedReason = reasonCodes[index];
+                                    });
+                                  },
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 20,
+                                  height: 20,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: selectedReason == reasonCodes[index]
+                                          ? const Color(0xFF0B1F3A)
+                                          : const Color(0xFFD1D5DB),
+                                      width: 2,
+                                    ),
+                                  ),
+                                  child: selectedReason == reasonCodes[index]
+                                      ? Center(
+                                          child: Container(
+                                            width: 10,
+                                            height: 10,
+                                            decoration: const BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              color: Color(0xFF0B1F3A),
+                                            ),
+                                          ),
+                                        )
+                                      : null,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    reasons[index],
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      color: Color(0xFF111827),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: FilledButton(
+                    onPressed: (selectedReason != null && !isLoading)
+                        ? () async {
+                            setState(() {
+                              isLoading = true;
+                            });
+                            await _cancelBookingWithReason(selectedReason!);
+                            if (mounted) {
+                              Navigator.of(dialogContext).pop();
+                            }
+                          }
+                        : null,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: selectedReason != null
+                          ? const Color(0xFF0B1F3A)
+                          : const Color(0xFFD1D5DB),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      disabledBackgroundColor: const Color(0xFFD1D5DB),
+                    ),
+                    child: isLoading
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                            ),
+                          )
+                        : const Text(
+                            'Cancel Booking',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -181,39 +406,26 @@ class _BookingTrackingScreenState extends ConsumerState<BookingTrackingScreen> {
     );
   }
 
-  void _onCancelBookingTap() {
-    showDialog<bool>(
-      context: context,
-      builder: (BuildContext dialogContext) => AlertDialog(
-        title: const Text('Cancel Booking?'),
-        content: const Text(
-          'Are you sure you want to cancel this booking? '
-          'The refund will be processed according to the cancellation policy.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Keep Booking'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text(
-              'Cancel Booking',
-              style: TextStyle(color: Color(0xFFDC2626)),
-            ),
-          ),
-        ],
-      ),
-    ).then((confirmed) {
-      if (confirmed == true && mounted) {
-        AppToast.success('Booking cancelled successfully');
-        Future.delayed(const Duration(seconds: 1), () {
-          if (mounted) {
-            Navigator.of(context).pop();
-          }
-        });
+  Future<void> _cancelBookingWithReason(String reason) async {
+    try {
+      final repository = ref.read(cartRepositoryProvider);
+      await repository.cancelBooking(
+        bookingId: widget.bookingId,
+        reason: reason,
+      );
+
+      if (!mounted) return;
+
+      AppToast.success('Booking cancelled successfully');
+      await Future<void>.delayed(const Duration(seconds: 1));
+
+      if (mounted) {
+        Navigator.of(context).pop();
       }
-    });
+    } catch (error) {
+      if (!mounted) return;
+      AppToast.error(error.toString());
+    }
   }
 }
 
@@ -425,46 +637,56 @@ class _OtpCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
       decoration: BoxDecoration(
-        color: const Color(0xFFEFF6FF),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFBFE7FF)),
+        color: const Color(0xFFEAF3FF),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFAED7FF)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Verification OTP',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF0F172A),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 20),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFFE5E7EB)),
-            ),
+          const Center(
             child: Text(
-              otp,
-              style: const TextStyle(
-                fontSize: 48,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF111827),
-                letterSpacing: 8,
+              'Verification OTP',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF6B7280),
               ),
             ),
           ),
-          const SizedBox(height: 12),
-          const Text(
-            'Share this OTP with your helper',
-            style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+          const SizedBox(height: 10),
+          Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  otp,
+                  style: const TextStyle(
+                    fontSize: 38,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF111827),
+                    letterSpacing: 6,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                const Icon(
+                  Icons.copy_outlined,
+                  size: 20,
+                  color: Color(0xFF9CA3AF),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          const Center(
+            child: Text(
+              'Share this OTP with your helper when they arrive',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+            ),
           ),
         ],
       ),
@@ -743,16 +965,18 @@ class _ServiceDetailsCard extends StatelessWidget {
 }
 
 class _CancellationPolicyCard extends StatelessWidget {
-  const _CancellationPolicyCard();
+  const _CancellationPolicyCard({required this.onCancelPressed});
+
+  final VoidCallback onCancelPressed;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        color: const Color(0xFFFFF5F5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFECACA)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -762,7 +986,7 @@ class _CancellationPolicyCard extends StatelessWidget {
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF0F172A),
+              color: Color(0xFF111827),
             ),
           ),
           const SizedBox(height: 12),
@@ -773,6 +997,29 @@ class _CancellationPolicyCard extends StatelessWidget {
           _PolicyItem(text: 'Cancel within 3 hours of the service: No refund'),
           const SizedBox(height: 8),
           _PolicyItem(text: '(100% applicable)'),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: 120,
+            height: 36,
+            child: OutlinedButton(
+              onPressed: onCancelPressed,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFEF4444),
+                side: const BorderSide(color: Color(0xFFEF4444)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text(
+                'Cancel Booking',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFFEF4444),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -791,7 +1038,7 @@ class _PolicyItem extends StatelessWidget {
       children: [
         const Text(
           '•',
-          style: TextStyle(fontSize: 16, color: Color(0xFF111827)),
+          style: TextStyle(fontSize: 16, color: Color(0xFFEF4444)),
         ),
         const SizedBox(width: 8),
         Expanded(
