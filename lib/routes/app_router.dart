@@ -61,15 +61,7 @@ class AppRouter {
       final serviceId = rawServiceId is int
           ? rawServiceId
           : int.tryParse(rawServiceId?.toString() ?? '') ?? 0;
-      final title = args?['title']?.toString() ?? 'Service';
-      final image = args?['image']?.toString() ?? '';
-      final price = args?['price']?.toString() ?? '₹699';
-      return ServiceViewDetailScreen(
-        serviceId: serviceId,
-        serviceTitle: title,
-        serviceImage: image,
-        price: price,
-      );
+      return ServiceViewDetailScreen(serviceId: serviceId);
     },
     cart: (_) => const CartScreen(),
     chooseRole: (_) => const ChooseRoleScreen(),

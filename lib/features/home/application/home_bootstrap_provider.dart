@@ -3,6 +3,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../auth/application/auth_provider.dart';
+import '../../../session/session_manager.dart';
 import '../data/home_bootstrap_repository.dart';
 import '../data/google_maps_service.dart';
 
@@ -12,6 +13,7 @@ class HomeBootstrapState {
     this.hasLoaded = false,
     this.showComingSoon = false,
     this.locationLine,
+    this.city,
     this.pincode,
     this.errorMessage,
   });
@@ -20,6 +22,7 @@ class HomeBootstrapState {
   final bool hasLoaded;
   final bool showComingSoon;
   final String? locationLine;
+  final String? city;
   final String? pincode;
   final String? errorMessage;
 
@@ -28,6 +31,7 @@ class HomeBootstrapState {
     bool? hasLoaded,
     bool? showComingSoon,
     String? locationLine,
+    String? city,
     String? pincode,
     String? errorMessage,
     bool clearError = false,
@@ -37,6 +41,7 @@ class HomeBootstrapState {
       hasLoaded: hasLoaded ?? this.hasLoaded,
       showComingSoon: showComingSoon ?? this.showComingSoon,
       locationLine: locationLine ?? this.locationLine,
+      city: city ?? this.city,
       pincode: pincode ?? this.pincode,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
     );
@@ -49,13 +54,18 @@ final homeBootstrapRepositoryProvider = Provider<HomeBootstrapRepository>((ref) 
 
 final homeBootstrapProvider =
     StateNotifierProvider<HomeBootstrapController, HomeBootstrapState>((ref) {
-      return HomeBootstrapController(ref.read(homeBootstrapRepositoryProvider));
+      return HomeBootstrapController(
+        ref.read(homeBootstrapRepositoryProvider),
+        ref.read(sessionManagerProvider),
+      );
     });
 
 class HomeBootstrapController extends StateNotifier<HomeBootstrapState> {
-  HomeBootstrapController(this._repository) : super(const HomeBootstrapState());
+  HomeBootstrapController(this._repository, this._sessionManager)
+      : super(const HomeBootstrapState());
 
   final HomeBootstrapRepository _repository;
+  final SessionManager _sessionManager;
   final GoogleMapsService _mapsService = GoogleMapsService();
 
   static const LatLng _fallbackLocation = LatLng(26.9124, 75.7873);
@@ -71,6 +81,7 @@ class HomeBootstrapController extends StateNotifier<HomeBootstrapState> {
       final position = await _fetchCurrentLatLng();
       final draft = await _mapsService.reverseGeocode(position);
       final pincode = draft.pinCode.trim();
+      final city = draft.city.trim();
       final locationLine = _buildLocationLine(
         formattedAddress: draft.formattedAddress,
         city: draft.city,
@@ -78,10 +89,12 @@ class HomeBootstrapController extends StateNotifier<HomeBootstrapState> {
       );
 
       if (pincode.isEmpty) {
+        await _sessionManager.setLocationComingSoon(false);
         state = state.copyWith(
           isLoading: false,
           hasLoaded: true,
           locationLine: locationLine,
+          city: city,
           pincode: pincode,
           showComingSoon: false,
         );
@@ -89,12 +102,15 @@ class HomeBootstrapController extends StateNotifier<HomeBootstrapState> {
       }
 
       final response = await _repository.getHomeByPincode(pincode);
+      final showComingSoon = _extractComingSoon(response);
+      await _sessionManager.setLocationComingSoon(showComingSoon);
       state = state.copyWith(
         isLoading: false,
         hasLoaded: true,
         locationLine: locationLine,
+        city: city,
         pincode: pincode,
-        showComingSoon: _extractComingSoon(response),
+        showComingSoon: showComingSoon,
       );
     } catch (error) {
       state = state.copyWith(
@@ -107,6 +123,7 @@ class HomeBootstrapController extends StateNotifier<HomeBootstrapState> {
 
   Future<void> loadForPincode({
     required String pincode,
+    required String city,
     required String locationLine,
   }) async {
     final normalized = pincode.trim();
@@ -117,16 +134,20 @@ class HomeBootstrapController extends StateNotifier<HomeBootstrapState> {
     state = state.copyWith(
       isLoading: true,
       locationLine: locationLine,
+      city: city.trim(),
       pincode: normalized,
       clearError: true,
     );
 
     try {
       final response = await _repository.getHomeByPincode(normalized);
+      final showComingSoon = _extractComingSoon(response);
+      await _sessionManager.setLocationComingSoon(showComingSoon);
       state = state.copyWith(
         isLoading: false,
         hasLoaded: true,
-        showComingSoon: _extractComingSoon(response),
+        showComingSoon: showComingSoon,
+        city: city.trim(),
       );
     } catch (error) {
       state = state.copyWith(

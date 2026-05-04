@@ -12,6 +12,7 @@ class SessionManager {
   static const String _fullNameKey = 'session_full_name';
   static const String _roleKey = 'session_role';
   static const String _expiresInKey = 'session_expires_in';
+  static const String _isComingSoonKey = 'session_is_coming_soon';
 
   Future<void> saveSession({
     required String accessToken,
@@ -96,7 +97,22 @@ class SessionManager {
       'fullName': prefs.getString(_fullNameKey),
       'role': prefs.getString(_roleKey),
       'expiresInSeconds': prefs.getInt(_expiresInKey),
+      'isComingSoon': prefs.getBool(_isComingSoonKey) ?? false,
     };
+  }
+
+  Future<void> setLocationComingSoon(bool isComingSoon) async {
+    final prefs = await _prefsFuture;
+    if (isComingSoon) {
+      await prefs.setBool(_isComingSoonKey, true);
+    } else {
+      await prefs.remove(_isComingSoonKey);
+    }
+  }
+
+  Future<bool> get isLocationComingSoon async {
+    final prefs = await _prefsFuture;
+    return prefs.getBool(_isComingSoonKey) ?? false;
   }
 
   Future<void> clearSession() async {
@@ -108,5 +124,6 @@ class SessionManager {
     await prefs.remove(_fullNameKey);
     await prefs.remove(_roleKey);
     await prefs.remove(_expiresInKey);
+    await prefs.remove(_isComingSoonKey);
   }
 }

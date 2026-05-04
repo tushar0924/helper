@@ -6,6 +6,7 @@ import '../application/address_provider.dart';
 import '../data/address_models.dart';
 import 'address_location_picker_screen.dart';
 import 'edit_address_screen.dart';
+import 'widgets/delete_address_modal.dart';
 
 class SavedAddressesScreen extends ConsumerStatefulWidget {
   const SavedAddressesScreen({super.key});
@@ -18,7 +19,7 @@ class SavedAddressesScreen extends ConsumerStatefulWidget {
 class _SavedAddressesScreenState extends ConsumerState<SavedAddressesScreen> {
   bool _isLoading = true;
   int? _editingAddressId;
-  int? _deletingAddressId;
+
   GetAddressesResponse? _response;
   String? _error;
 
@@ -104,31 +105,22 @@ class _SavedAddressesScreenState extends ConsumerState<SavedAddressesScreen> {
   }
 
   Future<void> _deleteAddress(SavedAddress address) async {
-    if (_deletingAddressId != null) {
-      return;
-    }
+    final confirmed = await showDeleteAddressModal(
+      context,
+      onDelete: () async {
+        await ref.read(addressRepositoryProvider).deleteAddress(address.id);
+      },
+    );
 
-    setState(() {
-      _deletingAddressId = address.id;
-    });
+    if (!mounted) return;
 
-    try {
-      await ref.read(addressRepositoryProvider).deleteAddress(address.id);
-      if (!mounted) {
-        return;
-      }
-
-      await _loadAddresses();
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      AppToast.error(error.toString());
-    } finally {
-      if (mounted) {
-        setState(() {
-          _deletingAddressId = null;
-        });
+    if (confirmed == true) {
+      try {
+        await _loadAddresses();
+      } catch (error) {
+        if (mounted) {
+          AppToast.error(error.toString());
+        }
       }
     }
   }
@@ -262,7 +254,6 @@ class _SavedAddressesScreenState extends ConsumerState<SavedAddressesScreen> {
                           address: address,
                           isDefault: isDefault,
                           isEditLoading: _editingAddressId == address.id,
-                          isDeleteLoading: _deletingAddressId == address.id,
                           onEdit: () => _openEditAddressFlow(address),
                           onDelete: () => _deleteAddress(address),
                         );
@@ -280,7 +271,7 @@ class _AddressCard extends StatelessWidget {
     required this.address,
     required this.isDefault,
     required this.isEditLoading,
-    required this.isDeleteLoading,
+    this.isDeleteLoading = false,
     required this.onEdit,
     required this.onDelete,
   });
@@ -394,7 +385,7 @@ class _AddressCard extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: isDeleteLoading || isEditLoading ? null : onDelete,
+                  onPressed: isEditLoading || isDeleteLoading ? null : onDelete,
                   style: OutlinedButton.styleFrom(
                     foregroundColor: const Color(0xFFDC2626),
                     side: const BorderSide(color: Color(0xFFD1D5DB)),

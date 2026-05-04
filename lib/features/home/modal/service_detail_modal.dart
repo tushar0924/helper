@@ -44,19 +44,19 @@ class ServiceDetailModal {
     );
   }
 
-    int get payablePrice => price > 0 ? price : originalPrice;
+  int get payablePrice => price > 0 ? price : originalPrice;
 
-    int get displayOriginalPrice =>
+  int get displayOriginalPrice =>
       originalPrice > 0 ? originalPrice : (price > 0 ? price : 0);
 
-    bool get hasDiscount =>
+  bool get hasDiscount =>
       originalPrice > 0 && price > 0 && originalPrice != price;
 
-    String get formattedOriginalPrice => '₹$displayOriginalPrice';
+  String get formattedOriginalPrice => '₹$displayOriginalPrice';
 
-    String get formattedPayablePrice => '₹$payablePrice';
+  String get formattedPayablePrice => '₹$payablePrice';
 
-    String get formattedPrice => formattedPayablePrice;
+  String get formattedPrice => formattedPayablePrice;
 
   String get formattedDuration {
     if (duration <= 0) {
@@ -82,8 +82,8 @@ class ServiceDetailFaqModal {
 
   factory ServiceDetailFaqModal.fromJson(Map<String, dynamic> json) {
     return ServiceDetailFaqModal(
-      question: json['question']?.toString() ?? '',
-      answer: json['answer']?.toString() ?? '',
+      question: json['q']?.toString() ?? json['question']?.toString() ?? '',
+      answer: json['a']?.toString() ?? json['answer']?.toString() ?? '',
     );
   }
 }

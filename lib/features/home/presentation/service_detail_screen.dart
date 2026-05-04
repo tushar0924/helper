@@ -4,9 +4,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/utils/app_toast.dart';
 import '../../../app/widgets/skeleton_shimmer.dart';
 import '../../../routes/app_router.dart';
+import '../../auth/application/auth_provider.dart';
+import '../../auth/application/auth_provider.dart' as auth_provider;
 import '../../cart/application/cart_provider.dart';
+import '../../cart/presentation/widgets/clear_cart_dialog.dart';
+import '../../cart/presentation/widgets/replace_cart_item_dialog.dart';
+import '../application/home_bootstrap_provider.dart';
 import '../application/service_provider.dart';
 import '../modal/service_modal.dart';
+import '../presentation/widgets/coming_soon_modal.dart';
 import 'widgets/price_stack.dart';
 
 class ServiceDetailScreen extends ConsumerStatefulWidget {
@@ -56,6 +62,7 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
 
     final state = ref.watch(serviceControllerProvider);
     final cartState = ref.watch(cartProvider);
+    final homeBootstrapState = ref.watch(homeBootstrapProvider);
     final cartSummary = cartState.summary;
     final cartItemCount = cartSummary?.items.length ?? 0;
     final services = state.categoryId == widget.categoryId
@@ -137,6 +144,58 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                       onChanged: (_) => setState(() {}),
                     ),
                     const SizedBox(height: 12),
+                    if (homeBootstrapState.showComingSoon)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF3F4F6),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            children: [
+                              RichText(
+                                textAlign: TextAlign.center,
+                                text: const TextSpan(
+                                  children: [
+                                    TextSpan(
+                                      text: 'We Are\n',
+                                      style: TextStyle(
+                                        color: Color(0xFF374151),
+                                        fontSize: 26,
+                                        fontWeight: FontWeight.w600,
+                                        height: 1.1,
+                                      ),
+                                    ),
+                                    TextSpan(
+                                      text: 'Coming Soon',
+                                      style: TextStyle(
+                                        color: Color(0xFF111827),
+                                        fontSize: 26,
+                                        fontWeight: FontWeight.w700,
+                                        height: 1.1,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              const Text(
+                                'We are currently living in select area and expanding quickly. Get notified when we are near you !',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Color(0xFF4B5563),
+                                  height: 1.4,
+                                  fontWeight: FontWeight.w400,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     Expanded(
                       child: _ServiceListingContent(
                         categoryId: widget.categoryId,
@@ -226,7 +285,18 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                       ),
                       const SizedBox(width: 6),
                       InkWell(
-                        onTap: () {
+                        onTap: () async {
+                          final shouldClear = await showClearCartDialog(
+                            context,
+                            onConfirm: () {
+                              return ref
+                                  .read(cartProvider.notifier)
+                                  .clearCart();
+                            },
+                          );
+                          if (!mounted || !shouldClear) {
+                            return;
+                          }
                           setState(() {
                             _isCartBannerDismissed = true;
                           });
@@ -498,6 +568,10 @@ class _ServiceCard extends ConsumerWidget {
         isServiceMutating && cartState.mutatingServiceAction == 'increment';
     final isDecrementLoading =
         isServiceMutating && cartState.mutatingServiceAction == 'decrement';
+    
+    // Check if location is coming soon
+    final homeBootstrapState = ref.watch(homeBootstrapProvider);
+    final isComingSoon = homeBootstrapState.showComingSoon;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -658,26 +732,78 @@ class _ServiceCard extends ConsumerWidget {
                     Expanded(
                       child: _CartActionButton(
                         quantity: quantity,
-                        disableIncrement: disableAdd,
+                        disableIncrement: disableAdd || isComingSoon,
                         isAddLoading: isAddLoading,
                         isIncrementLoading: isIncrementLoading,
                         isDecrementLoading: isDecrementLoading,
-                        onAdd: () {
-                          ref
-                              .read(cartProvider.notifier)
-                              .addToCart(serviceId: item.id, quantity: 1);
-                          AppToast.success('${item.name} added to cart');
-                        },
-                        onIncrement: () {
-                          ref
-                              .read(cartProvider.notifier)
-                              .incrementByServiceId(item.id);
-                        },
-                        onDecrement: () {
-                          ref
-                              .read(cartProvider.notifier)
-                              .decrementByServiceId(item.id);
-                        },
+                        onAdd: isComingSoon
+                            ? () async {
+                                await showComingSoonModal(
+                                  context,
+                                  onChangeLocation: () {
+                                    Navigator.of(context).pop();
+                                  },
+                                );
+                              }
+                            : () async {
+                                final result = await ref
+                                    .read(cartProvider.notifier)
+                                    .addToCart(serviceId: item.id, quantity: 1);
+                                if (!context.mounted) {
+                                  return;
+                                }
+                                if (result == CartAddResult.added) {
+                                  AppToast.success('${item.name} added to cart');
+                                  return;
+                                }
+                                if (result == CartAddResult.failed) {
+                                  final message =
+                                      ref.read(cartProvider).errorMessage;
+                                  if (message != null && message.isNotEmpty) {
+                                    AppToast.error(message);
+                                  }
+                                  return;
+                                }
+                                if (result != CartAddResult.categoryConflict) {
+                                  return;
+                                }
+
+                                final shouldReplace =
+                                    await showReplaceCartItemDialog(context);
+                                if (!context.mounted || !shouldReplace) {
+                                  return;
+                                }
+
+                                final replaced = await ref
+                                    .read(cartProvider.notifier)
+                                    .replaceCartItem(
+                                      serviceId: item.id,
+                                      quantity: 1,
+                                    );
+                                if (context.mounted && replaced) {
+                                  AppToast.success('${item.name} added to cart');
+                                } else if (context.mounted) {
+                                  final message =
+                                      ref.read(cartProvider).errorMessage;
+                                  if (message != null && message.isNotEmpty) {
+                                    AppToast.error(message);
+                                  }
+                                }
+                              },
+                        onIncrement: isComingSoon
+                            ? () {}
+                            : () {
+                                ref
+                                    .read(cartProvider.notifier)
+                                    .incrementByServiceId(item.id);
+                              },
+                        onDecrement: isComingSoon
+                            ? () {}
+                            : () {
+                                ref
+                                    .read(cartProvider.notifier)
+                                    .decrementByServiceId(item.id);
+                              },
                       ),
                     ),
                   ],

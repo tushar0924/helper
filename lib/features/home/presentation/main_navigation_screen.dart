@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../routes/app_router.dart';
 import '../../cart/application/cart_provider.dart';
+import '../../cart/presentation/widgets/clear_cart_dialog.dart';
 import '../application/category_provider.dart';
 import 'home_screen.dart';
 import 'home_tab_screen.dart';
@@ -134,7 +135,18 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
                       ),
                       const SizedBox(width: 6),
                       InkWell(
-                        onTap: () {
+                        onTap: () async {
+                          final shouldClear = await showClearCartDialog(
+                            context,
+                            onConfirm: () {
+                              return ref
+                                  .read(cartProvider.notifier)
+                                  .clearCart();
+                            },
+                          );
+                          if (!mounted || !shouldClear) {
+                            return;
+                          }
                           setState(() {
                             _isCartBannerDismissed = true;
                           });

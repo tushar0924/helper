@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../../app/utils/app_toast.dart';
+import '../application/home_bootstrap_provider.dart';
 import '../data/address_models.dart';
 import '../data/google_maps_service.dart';
 
@@ -30,6 +31,9 @@ class _AddressLocationPickerScreenState
   late LatLng _selectedPosition;
   bool _isLoadingLocation = true;
   bool _isUpdatingLocation = false;
+  bool _isCheckingServiceability = false;
+  bool? _isServiceAvailable;
+  String? _serviceabilityPincode;
   bool _showMyLocation = false;
 
   @override
@@ -49,6 +53,7 @@ class _AddressLocationPickerScreenState
       Future.microtask(_initializeLocation);
     } else {
       _isLoadingLocation = false;
+      Future.microtask(() => _checkServiceability(_draft));
     }
   }
 
@@ -129,6 +134,7 @@ class _AddressLocationPickerScreenState
         _selectedPosition = position;
         _isUpdatingLocation = false;
       });
+      unawaited(_checkServiceability(draft));
 
       if (moveCamera && _mapController != null) {
         await _mapController!.animateCamera(CameraUpdate.newLatLng(position));
@@ -148,8 +154,49 @@ class _AddressLocationPickerScreenState
         );
         _selectedPosition = position;
         _isUpdatingLocation = false;
+        _isServiceAvailable = null;
+        _serviceabilityPincode = null;
       });
       AppToast.error(error.toString());
+    }
+  }
+
+  Future<void> _checkServiceability(AddressDraft draft) async {
+    final pincode = draft.pinCode.replaceAll(RegExp(r'[^0-9]'), '');
+    if (pincode.isEmpty || pincode == _serviceabilityPincode) {
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _isCheckingServiceability = true;
+        _serviceabilityPincode = pincode;
+        _isServiceAvailable = null;
+      });
+    }
+
+    try {
+      final response = await ref
+          .read(homeBootstrapRepositoryProvider)
+          .getHomeByPincode(pincode);
+      final isAvailable = !_extractComingSoon(response);
+      if (!mounted || _serviceabilityPincode != pincode) {
+        return;
+      }
+
+      setState(() {
+        _isCheckingServiceability = false;
+        _isServiceAvailable = isAvailable;
+      });
+    } catch (_) {
+      if (!mounted || _serviceabilityPincode != pincode) {
+        return;
+      }
+
+      setState(() {
+        _isCheckingServiceability = false;
+        _isServiceAvailable = false;
+      });
     }
   }
 
@@ -167,7 +214,9 @@ class _AddressLocationPickerScreenState
 
     setState(() {
       _draft = selected;
+      _selectedPosition = LatLng(selected.latitude, selected.longitude);
     });
+    unawaited(_checkServiceability(selected));
 
     final position = LatLng(selected.latitude, selected.longitude);
     if (_mapController != null) {
@@ -330,6 +379,11 @@ class _AddressLocationPickerScreenState
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        _ServiceabilityBanner(
+                          isChecking: _isCheckingServiceability,
+                          isAvailable: _isServiceAvailable,
+                        ),
+                        const SizedBox(height: 10),
                         const Text(
                           'Order will be delivered here',
                           style: TextStyle(
@@ -419,6 +473,123 @@ class _AddressLocationPickerScreenState
       ),
     );
   }
+}
+
+class _ServiceabilityBanner extends StatelessWidget {
+  const _ServiceabilityBanner({
+    required this.isChecking,
+    required this.isAvailable,
+  });
+
+  final bool isChecking;
+  final bool? isAvailable;
+
+  @override
+  Widget build(BuildContext context) {
+    final available = isAvailable == true;
+    final unavailable = isAvailable == false;
+    final color = available
+        ? const Color(0xFF86F5B2)
+        : unavailable
+            ? const Color(0xFFFFCDD2)
+            : const Color(0xFFE5E7EB);
+    final textColor = available
+        ? const Color(0xFF065F46)
+        : unavailable
+            ? const Color(0xFFB91C1C)
+            : const Color(0xFF475569);
+    final text = isChecking
+        ? 'Checking service availability...'
+        : available
+            ? 'Service is available in this area'
+            : unavailable
+                ? 'Service is not available in this area'
+                : 'Select a location to check service availability';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        children: [
+          if (isChecking)
+            const SizedBox(
+              width: 15,
+              height: 15,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF475569)),
+              ),
+            )
+          else
+            Icon(
+              available ? Icons.check_circle : Icons.cancel,
+              size: 16,
+              color: textColor,
+            ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                color: textColor,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+bool _extractComingSoon(Map<String, dynamic> response) {
+  final data = response['data'];
+  final source = data is Map<String, dynamic> ? data : response;
+
+  final comingSoon = _asBool(source['comingSoon']) ??
+      _asBool(source['isComingSoon']) ??
+      _asBool(source['showComingSoon']);
+  if (comingSoon != null) {
+    return comingSoon;
+  }
+
+  final serviceable = _asBool(source['serviceable']) ??
+      _asBool(source['isServiceable']) ??
+      _asBool(source['isAvailable']);
+  if (serviceable != null) {
+    return !serviceable;
+  }
+
+  final message =
+      (source['message']?.toString() ?? response['message']?.toString() ?? '')
+          .toLowerCase();
+  return message.contains('coming soon') ||
+      message.contains('not serviceable') ||
+      message.contains('not available');
+}
+
+bool? _asBool(Object? value) {
+  if (value is bool) {
+    return value;
+  }
+  if (value is num) {
+    return value != 0;
+  }
+
+  final text = value?.toString().trim().toLowerCase();
+  if (text == 'true' || text == '1' || text == 'yes') {
+    return true;
+  }
+  if (text == 'false' || text == '0' || text == 'no') {
+    return false;
+  }
+
+  return null;
 }
 
 class _LocationSearchSheet extends StatefulWidget {

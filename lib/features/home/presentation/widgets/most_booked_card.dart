@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/utils/app_toast.dart';
 import '../../../cart/application/cart_provider.dart';
+import '../../../cart/presentation/widgets/replace_cart_item_dialog.dart';
 import 'price_stack.dart';
 
 class MostBookedCard extends ConsumerWidget {
@@ -106,15 +107,49 @@ class MostBookedCard extends ConsumerWidget {
                 isAddLoading: isAddLoading,
                 isIncrementLoading: isIncrementLoading,
                 isDecrementLoading: isDecrementLoading,
-                onAdd: () {
+                onAdd: () async {
                   if (serviceId == null) {
                     AppToast.error('Service id not available for this item');
                     return;
                   }
 
-                  ref
+                  final result = await ref
                       .read(cartProvider.notifier)
                       .addToCart(serviceId: serviceId!, quantity: 1);
+                  if (!context.mounted) {
+                    return;
+                  }
+                  if (result == CartAddResult.failed) {
+                    final message = ref.read(cartProvider).errorMessage;
+                    if (message != null && message.isNotEmpty) {
+                      AppToast.error(message);
+                    }
+                    return;
+                  }
+                  if (result != CartAddResult.categoryConflict) {
+                    return;
+                  }
+
+                  final shouldReplace = await showReplaceCartItemDialog(
+                    context,
+                  );
+                  if (!context.mounted || !shouldReplace) {
+                    return;
+                  }
+
+                  final replaced =
+                      await ref.read(cartProvider.notifier).replaceCartItem(
+                            serviceId: serviceId!,
+                            quantity: 1,
+                          );
+                  if (!context.mounted || replaced) {
+                    return;
+                  }
+
+                  final message = ref.read(cartProvider).errorMessage;
+                  if (message != null && message.isNotEmpty) {
+                    AppToast.error(message);
+                  }
                 },
                 onIncrement: () {
                   if (serviceId == null) {

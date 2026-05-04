@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../auth/application/auth_provider.dart';
+import '../../../network/api_client.dart';
 import '../data/cart_repository.dart';
 import '../modal/cart_summary_modal.dart';
 
@@ -75,13 +78,16 @@ class CartController extends StateNotifier<CartState> {
     }
   }
 
-  Future<void> addToCart({required int serviceId, int quantity = 1}) async {
+  Future<CartAddResult> addToCart({
+    required int serviceId,
+    int quantity = 1,
+  }) async {
     if (state.isMutating || state.mutatingServiceId != null) {
-      return;
+      return CartAddResult.ignored;
     }
 
     if (quantity > maxQuantity) {
-      return;
+      return CartAddResult.ignored;
     }
 
     state = state.copyWith(
@@ -98,11 +104,59 @@ class CartController extends StateNotifier<CartState> {
         summary: response.data,
         clearServiceMutation: true,
       );
+      return CartAddResult.added;
+    } catch (error) {
+      final conflict = CartCategoryConflict.fromError(error);
+      state = state.copyWith(
+        errorMessage: conflict == null ? error.toString() : null,
+        clearServiceMutation: true,
+      );
+      if (conflict != null) {
+        return CartAddResult.categoryConflict;
+      }
+      return CartAddResult.failed;
+    }
+  }
+
+  Future<bool> replaceCartItem({
+    required int serviceId,
+    int quantity = 1,
+  }) async {
+    if (state.isMutating || state.mutatingServiceId != null) {
+      return false;
+    }
+
+    if (quantity > maxQuantity) {
+      return false;
+    }
+
+    state = state.copyWith(
+      isMutating: true,
+      mutatingServiceId: serviceId,
+      mutatingServiceAction: 'add',
+      clearError: true,
+    );
+    try {
+      final clearResponse = await _repository.clearCart();
+      state = state.copyWith(summary: clearResponse.data);
+
+      final addResponse = await _repository.addToCart(
+        serviceId: serviceId,
+        quantity: quantity,
+      );
+      state = state.copyWith(
+        isMutating: false,
+        summary: addResponse.data,
+        clearServiceMutation: true,
+      );
+      return true;
     } catch (error) {
       state = state.copyWith(
+        isMutating: false,
         errorMessage: error.toString(),
         clearServiceMutation: true,
       );
+      return false;
     }
   }
 
@@ -231,6 +285,72 @@ class CartController extends StateNotifier<CartState> {
 
   bool isServiceMutating(int serviceId) {
     return state.mutatingServiceId == serviceId;
+  }
+}
+
+enum CartAddResult {
+  added,
+  categoryConflict,
+  failed,
+  ignored,
+}
+
+class CartCategoryConflict {
+  const CartCategoryConflict({
+    required this.existingCategoryId,
+    required this.newCategoryId,
+    required this.canReplace,
+  });
+
+  final int? existingCategoryId;
+  final int? newCategoryId;
+  final bool canReplace;
+
+  static CartCategoryConflict? fromError(Object error) {
+    if (error is! ApiException || error.statusCode != 409) {
+      return null;
+    }
+
+    final body = error.responseBody;
+    if (body == null || body.isEmpty) {
+      return null;
+    }
+
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is! Map<String, dynamic>) {
+        return null;
+      }
+
+      if (decoded['code']?.toString() != 'CART_CATEGORY_CONFLICT') {
+        return null;
+      }
+
+      final data = decoded['data'];
+      return CartCategoryConflict(
+        existingCategoryId: data is Map<String, dynamic>
+            ? _asInt(data['existingCategoryId'])
+            : null,
+        newCategoryId: data is Map<String, dynamic>
+            ? _asInt(data['newCategoryId'])
+            : null,
+        canReplace: data is Map<String, dynamic>
+            ? data['canReplace'] == true
+            : false,
+      );
+    } on FormatException {
+      return null;
+    }
+  }
+
+  static int? _asInt(Object? value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    return int.tryParse(value?.toString() ?? '');
   }
 }
 

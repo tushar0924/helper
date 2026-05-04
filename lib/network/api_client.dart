@@ -17,6 +17,7 @@ class ApiClient {
     String path, {
     bool requiresAuth = false,
     bool showSuccessToast = true,
+    bool showErrorToast = true,
     Map<String, String>? headers,
   }) async {
     final resolvedHeaders = await _headers(
@@ -28,7 +29,11 @@ class ApiClient {
 
     final response = await _client.get(uri, headers: resolvedHeaders);
     _logResponse(method: 'GET', uri: uri, response: response);
-    return _decodeResponse(response, showSuccessToast: showSuccessToast);
+    return _decodeResponse(
+      response,
+      showSuccessToast: showSuccessToast,
+      showErrorToast: showErrorToast,
+    );
   }
 
   Future<Map<String, dynamic>> postJson(
@@ -36,6 +41,7 @@ class ApiClient {
     Map<String, dynamic>? body,
     bool requiresAuth = false,
     bool showSuccessToast = true,
+    bool showErrorToast = true,
     Map<String, String>? headers,
   }) async {
     final resolvedHeaders = await _headers(
@@ -57,7 +63,11 @@ class ApiClient {
       body: requestBody,
     );
     _logResponse(method: 'POST', uri: uri, response: response);
-    return _decodeResponse(response, showSuccessToast: showSuccessToast);
+    return _decodeResponse(
+      response,
+      showSuccessToast: showSuccessToast,
+      showErrorToast: showErrorToast,
+    );
   }
 
   Future<Map<String, dynamic>> putJson(
@@ -65,6 +75,7 @@ class ApiClient {
     Map<String, dynamic>? body,
     bool requiresAuth = false,
     bool showSuccessToast = true,
+    bool showErrorToast = true,
     Map<String, String>? headers,
   }) async {
     final resolvedHeaders = await _headers(
@@ -86,7 +97,11 @@ class ApiClient {
       body: requestBody,
     );
     _logResponse(method: 'PUT', uri: uri, response: response);
-    return _decodeResponse(response, showSuccessToast: showSuccessToast);
+    return _decodeResponse(
+      response,
+      showSuccessToast: showSuccessToast,
+      showErrorToast: showErrorToast,
+    );
   }
 
   Future<Map<String, dynamic>> deleteJson(
@@ -94,6 +109,7 @@ class ApiClient {
     Map<String, dynamic>? body,
     bool requiresAuth = false,
     bool showSuccessToast = true,
+    bool showErrorToast = true,
     Map<String, String>? headers,
   }) async {
     final resolvedHeaders = await _headers(
@@ -115,7 +131,11 @@ class ApiClient {
       body: requestBody,
     );
     _logResponse(method: 'DELETE', uri: uri, response: response);
-    return _decodeResponse(response, showSuccessToast: showSuccessToast);
+    return _decodeResponse(
+      response,
+      showSuccessToast: showSuccessToast,
+      showErrorToast: showErrorToast,
+    );
   }
 
   Uri _uriFor(String path) {
@@ -145,6 +165,7 @@ class ApiClient {
   Map<String, dynamic> _decodeResponse(
     http.Response response, {
     required bool showSuccessToast,
+    required bool showErrorToast,
   }) {
     Object? decoded;
     if (response.body.isNotEmpty) {
@@ -175,7 +196,7 @@ class ApiClient {
       return <String, dynamic>{'data': decoded};
     }
 
-    if (message != null && message.trim().isNotEmpty) {
+    if (showErrorToast && message != null && message.trim().isNotEmpty) {
       AppToast.error(message);
     }
 

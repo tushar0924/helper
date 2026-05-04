@@ -16,6 +16,7 @@ class HomeBootstrapRepository {
       HomeApiEndpoint.homeByPincode(Uri.encodeQueryComponent(normalized)),
       requiresAuth: true,
       showSuccessToast: false,
+      showErrorToast: false,
     );
   }
 

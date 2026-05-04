@@ -22,6 +22,8 @@ class CartRepository {
     final response = await _apiClient.postJson(
       CartApiEndpoint.add,
       requiresAuth: true,
+      showSuccessToast: false,
+      showErrorToast: false,
       body: <String, dynamic>{'serviceId': serviceId, 'quantity': quantity},
     );
 

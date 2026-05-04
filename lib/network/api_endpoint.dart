@@ -46,6 +46,13 @@ class HomeApiEndpoint {
   static const String categories = 'categories';
   static const String services = 'services';
   static String homeByPincode(String pincode) => 'home?pincode=$pincode';
+  static String banners({String? city}) {
+    final normalized = city?.trim();
+    if (normalized == null || normalized.isEmpty) {
+      return 'banners';
+    }
+    return 'banners?city=${Uri.encodeQueryComponent(normalized)}';
+  }
 }
 
 class ServiceabilityApiEndpoint {
