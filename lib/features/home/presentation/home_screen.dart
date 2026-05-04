@@ -5,17 +5,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/utils/app_toast.dart';
 import '../../auth/application/auth_provider.dart';
 import '../application/category_provider.dart';
+import '../application/home_bootstrap_provider.dart';
 import '../../cart/application/cart_provider.dart';
-import '../application/address_provider.dart';
 import '../data/address_models.dart';
 import '../../../routes/app_router.dart';
 import 'profile_screen.dart';
 import 'widgets/category_skeleton_grid.dart';
+import 'saved_addresses_screen.dart';
+import '../../shared/widgets/address_selection_bottom_sheet.dart';
 import 'widgets/most_booked_card.dart';
 import 'widgets/offer_card.dart';
 import 'widgets/service_tile.dart';
 
-class HelperTabView extends ConsumerWidget {
+class HelperTabView extends ConsumerStatefulWidget {
   const HelperTabView({super.key});
 
   static final List<_MostBookedData> _mostBooked = <_MostBookedData>[
@@ -50,14 +52,109 @@ class HelperTabView extends ConsumerWidget {
   ];
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HelperTabView> createState() => _HelperTabViewState();
+}
+
+class _HelperTabViewState extends ConsumerState<HelperTabView> {
+  bool _isNotifySubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() {
+      ref.read(homeBootstrapProvider.notifier).loadForCurrentLocation();
+    });
+  }
+
+  Future<void> _onChangeLocationTap() async {
+    final selectedAddress = await showModalBottomSheet<SavedAddress>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => AddressSelectionBottomSheet(
+        currentAddressId: ref.read(cartProvider).summary?.address?.id,
+        onAddNewAddress: () async {
+          await Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => SavedAddressesScreen(),
+            ),
+          );
+        },
+      ),
+    );
+
+    if (!mounted || selectedAddress == null) {
+      return;
+    }
+
+    await ref
+        .read(cartProvider.notifier)
+        .updateAddress(addressId: selectedAddress.id);
+
+    final pincode = selectedAddress.pinCode.replaceAll(RegExp(r'[^0-9]'), '');
+    await ref.read(homeBootstrapProvider.notifier).loadForPincode(
+      pincode: pincode,
+      locationLine:
+          '${selectedAddress.address}, ${selectedAddress.city} - ${selectedAddress.pinCode}',
+    );
+  }
+
+  Future<void> _onNotifyMeTap() async {
+    if (_isNotifySubmitting) {
+      return;
+    }
+
+    final pincode = ref.read(homeBootstrapProvider).pincode?.trim() ?? '';
+    if (pincode.isEmpty) {
+      AppToast.error('Pincode unavailable. Please change location.');
+      return;
+    }
+
+    final sessionData = await ref.read(sessionManagerProvider).getSessionData();
+    final rawUserId = sessionData['userId'];
+    final userId = rawUserId is int
+        ? rawUserId
+        : int.tryParse(rawUserId?.toString() ?? '');
+
+    setState(() {
+      _isNotifySubmitting = true;
+    });
+
+    try {
+      await ref.read(homeBootstrapRepositoryProvider).notifyServiceability(
+        pincode: pincode,
+        userId: userId,
+      );
+    } catch (_) {
+      // ApiClient already shows toast for failures.
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isNotifySubmitting = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     ref.listen<CategoryState>(categoryControllerProvider, (_, next) {
       if (next.errorMessage != null && next.errorMessage!.isNotEmpty) {
         AppToast.error(next.errorMessage!);
       }
     });
 
+    ref.listen<HomeBootstrapState>(homeBootstrapProvider, (_, next) {
+      if (next.errorMessage != null && next.errorMessage!.isNotEmpty) {
+        AppToast.error(next.errorMessage!);
+      }
+    });
+
     final categoryState = ref.watch(categoryControllerProvider);
+    final homeBootstrapState = ref.watch(homeBootstrapProvider);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: const SystemUiOverlayStyle(
@@ -67,13 +164,25 @@ class HelperTabView extends ConsumerWidget {
       ),
       child: Column(
         children: [
-          _TopHeader(),
+          _TopHeader(
+            fallbackLocationLine: homeBootstrapState.locationLine,
+            isFetchingCurrentLocation:
+                homeBootstrapState.isLoading && !homeBootstrapState.hasLoaded,
+          ),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (homeBootstrapState.showComingSoon) ...[
+                    _ServiceabilityCard(
+                      isNotifyLoading: _isNotifySubmitting,
+                      onNotifyTap: _onNotifyMeTap,
+                      onChangeLocationTap: _onChangeLocationTap,
+                    ),
+                    const SizedBox(height: 14),
+                  ],
                   const Text(
                     'Explore all Categories',
                     style: TextStyle(
@@ -101,10 +210,10 @@ class HelperTabView extends ConsumerWidget {
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
                       physics: const BouncingScrollPhysics(),
-                      itemCount: _mostBooked.length,
+                      itemCount: HelperTabView._mostBooked.length,
                       separatorBuilder: (_, __) => const SizedBox(width: 10),
                       itemBuilder: (context, index) {
-                        final item = _mostBooked[index];
+                        final item = HelperTabView._mostBooked[index];
                         return MostBookedCard(
                           title: item.title,
                           price: item.price,
@@ -115,6 +224,96 @@ class HelperTabView extends ConsumerWidget {
                     ),
                   ),
                 ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ServiceabilityCard extends StatelessWidget {
+  const _ServiceabilityCard({
+    required this.isNotifyLoading,
+    required this.onNotifyTap,
+    required this.onChangeLocationTap,
+  });
+
+  final bool isNotifyLoading;
+  final Future<void> Function() onNotifyTap;
+  final Future<void> Function() onChangeLocationTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE5E7EB),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        children: [
+          const Text(
+            'We Are\nComing Soon',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Color(0xFF1F2937),
+              fontSize: 34,
+              height: 1.05,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'We are currently living in select area and expanding quickly. Get notified when we are near you !',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 12,
+              color: Color(0xFF4B5563),
+              height: 1.35,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: 150,
+            child: FilledButton(
+              onPressed: isNotifyLoading
+                  ? null
+                  : () {
+                      onNotifyTap();
+                    },
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF0B1F3A),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: isNotifyLoading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Text('Notify me'),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              onChangeLocationTap();
+            },
+            child: const Text(
+              'Change location',
+              style: TextStyle(
+                color: Color(0xFF111827),
+                fontSize: 13,
+                decoration: TextDecoration.underline,
+                decorationColor: Color(0xFF111827),
               ),
             ),
           ),
@@ -310,7 +509,13 @@ class _OfferCarouselState extends State<_OfferCarousel> {
 }
 
 class _TopHeader extends ConsumerStatefulWidget {
-  const _TopHeader();
+  const _TopHeader({
+    this.fallbackLocationLine,
+    this.isFetchingCurrentLocation = false,
+  });
+
+  final String? fallbackLocationLine;
+  final bool isFetchingCurrentLocation;
 
   @override
   ConsumerState<_TopHeader> createState() => _TopHeaderState();
@@ -333,8 +538,15 @@ class _TopHeaderState extends ConsumerState<_TopHeader> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _HomeAddressSelectionBottomSheet(
+      builder: (_) => AddressSelectionBottomSheet(
         currentAddressId: ref.read(cartProvider).summary?.address?.id,
+        onAddNewAddress: () async {
+          await Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => SavedAddressesScreen(),
+            ),
+          );
+        },
       ),
     );
 
@@ -354,6 +566,13 @@ class _TopHeaderState extends ConsumerState<_TopHeader> {
     if (state.errorMessage == null || state.errorMessage!.isEmpty) {
       AppToast.success('Address updated successfully');
     }
+
+    final pincode = selectedAddress.pinCode.replaceAll(RegExp(r'[^0-9]'), '');
+    await ref.read(homeBootstrapProvider.notifier).loadForPincode(
+      pincode: pincode,
+      locationLine:
+          '${selectedAddress.address}, ${selectedAddress.city} - ${selectedAddress.pinCode}',
+    );
   }
 
   @override
@@ -415,9 +634,16 @@ class _TopHeaderState extends ConsumerState<_TopHeader> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            selectedAddress != null
-                                ? '${selectedAddress.address}, ${selectedAddress.city} - ${selectedAddress.pinCode}'
-                                : 'Select service address',
+                            widget.isFetchingCurrentLocation
+                              ? 'Fetching current location...'
+                              : ((widget.fallbackLocationLine
+                                      ?.trim()
+                                      .isNotEmpty ==
+                                    true)
+                                  ? widget.fallbackLocationLine!
+                                  : (selectedAddress != null
+                                    ? '${selectedAddress.address}, ${selectedAddress.city} - ${selectedAddress.pinCode}'
+                                    : 'Select service address')),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
@@ -560,272 +786,4 @@ class _MostBookedData {
   final String imageUrl;
 }
 
-class _HomeAddressSelectionBottomSheet extends ConsumerStatefulWidget {
-  const _HomeAddressSelectionBottomSheet({this.currentAddressId});
 
-  final int? currentAddressId;
-
-  @override
-  ConsumerState<_HomeAddressSelectionBottomSheet> createState() =>
-      _HomeAddressSelectionBottomSheetState();
-}
-
-class _HomeAddressSelectionBottomSheetState
-    extends ConsumerState<_HomeAddressSelectionBottomSheet> {
-  bool _isLoading = true;
-  bool _isSaving = false;
-  String? _errorMessage;
-  List<SavedAddress> _addresses = const <SavedAddress>[];
-  int? _selectedAddressId;
-
-  @override
-  void initState() {
-    super.initState();
-    _selectedAddressId = widget.currentAddressId;
-    Future.microtask(_loadAddresses);
-  }
-
-  Future<void> _loadAddresses() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final response = await ref.read(addressRepositoryProvider).getAddresses();
-      if (!mounted) {
-        return;
-      }
-
-      final fallbackId = response.addresses.isNotEmpty
-          ? response.addresses.first.id
-          : null;
-      final currentId = _selectedAddressId;
-      final hasCurrentId =
-          currentId != null &&
-          response.addresses.any((item) => item.id == currentId);
-
-      setState(() {
-        _addresses = response.addresses;
-        if (!hasCurrentId) {
-          _selectedAddressId = fallbackId;
-        }
-        _isLoading = false;
-      });
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _errorMessage = error.toString();
-        _isLoading = false;
-      });
-    }
-  }
-
-  void _saveSelection() {
-    final selectedId = _selectedAddressId;
-    if (selectedId == null || _isSaving || _addresses.isEmpty) {
-      return;
-    }
-
-    final selectedAddress = _addresses.firstWhere(
-      (address) => address.id == selectedId,
-      orElse: () => _addresses.first,
-    );
-
-    setState(() {
-      _isSaving = true;
-    });
-    Navigator.of(context).pop(selectedAddress);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          16,
-          12,
-          16,
-          16 + MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 42,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFD1D5DB),
-                  borderRadius: BorderRadius.circular(100),
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-            const Text(
-              'Select Address',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF0F172A),
-              ),
-            ),
-            const SizedBox(height: 12),
-            if (_isLoading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (_errorMessage != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Failed to load addresses.',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFFB91C1C),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _errorMessage!,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF6B7280),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    OutlinedButton(
-                      onPressed: _loadAddresses,
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
-              )
-            else if (_addresses.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Text(
-                  'No saved addresses found. Please add an address from Profile > Addresses.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFF6B7280),
-                    height: 1.4,
-                  ),
-                ),
-              )
-            else
-              Flexible(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: _addresses.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
-                  itemBuilder: (context, index) {
-                    final address = _addresses[index];
-                    final isSelected = address.id == _selectedAddressId;
-
-                    return InkWell(
-                      onTap: () {
-                        setState(() {
-                          _selectedAddressId = address.id;
-                        });
-                      },
-                      borderRadius: BorderRadius.circular(12),
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isSelected
-                                ? const Color(0xFF0B1F3A)
-                                : const Color(0xFFE5E7EB),
-                          ),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Radio<int>(
-                              value: address.id,
-                              groupValue: _selectedAddressId,
-                              onChanged: (value) {
-                                if (value == null) {
-                                  return;
-                                }
-                                setState(() {
-                                  _selectedAddressId = value;
-                                });
-                              },
-                            ),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    address.label,
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
-                                      color: Color(0xFF0F172A),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '${address.address}, ${address.city} - ${address.pinCode}',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Color(0xFF6B7280),
-                                      height: 1.35,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: _addresses.isEmpty || _selectedAddressId == null
-                    ? null
-                    : _saveSelection,
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF0B1F3A),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: _isSaving
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Colors.white,
-                          ),
-                        ),
-                      )
-                    : const Text('Save Address'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

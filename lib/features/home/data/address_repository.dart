@@ -52,4 +52,11 @@ class AddressRepository {
 
     return SavedAddressResponse.fromJson(response);
   }
+
+  Future<void> deleteAddress(int addressId) async {
+    await _apiClient.deleteJson(
+      UserApiEndpoint.addressById(addressId),
+      requiresAuth: true,
+    );
+  }
 }

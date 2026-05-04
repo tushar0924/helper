@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../application/service_detail_provider.dart';
 import '../modal/service_detail_modal.dart';
+import 'widgets/price_stack.dart';
 
 class ServiceViewDetailScreen extends ConsumerStatefulWidget {
   const ServiceViewDetailScreen({
@@ -167,13 +168,12 @@ class _ServiceDetailContent extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Text(
-                      details.formattedPrice,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF0F172A),
-                      ),
+                    PriceStack(
+                      originalPrice: details.hasDiscount
+                          ? details.formattedOriginalPrice
+                          : null,
+                      payablePrice: details.formattedPayablePrice,
+                      compact: true,
                     ),
                   ],
                 ),

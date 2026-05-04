@@ -18,6 +18,7 @@ class SavedAddressesScreen extends ConsumerStatefulWidget {
 class _SavedAddressesScreenState extends ConsumerState<SavedAddressesScreen> {
   bool _isLoading = true;
   int? _editingAddressId;
+  int? _deletingAddressId;
   GetAddressesResponse? _response;
   String? _error;
 
@@ -99,6 +100,36 @@ class _SavedAddressesScreenState extends ConsumerState<SavedAddressesScreen> {
     } catch (error) {
       if (!mounted) return;
       AppToast.error(error.toString());
+    }
+  }
+
+  Future<void> _deleteAddress(SavedAddress address) async {
+    if (_deletingAddressId != null) {
+      return;
+    }
+
+    setState(() {
+      _deletingAddressId = address.id;
+    });
+
+    try {
+      await ref.read(addressRepositoryProvider).deleteAddress(address.id);
+      if (!mounted) {
+        return;
+      }
+
+      await _loadAddresses();
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      AppToast.error(error.toString());
+    } finally {
+      if (mounted) {
+        setState(() {
+          _deletingAddressId = null;
+        });
+      }
     }
   }
 
@@ -231,7 +262,9 @@ class _SavedAddressesScreenState extends ConsumerState<SavedAddressesScreen> {
                           address: address,
                           isDefault: isDefault,
                           isEditLoading: _editingAddressId == address.id,
+                          isDeleteLoading: _deletingAddressId == address.id,
                           onEdit: () => _openEditAddressFlow(address),
+                          onDelete: () => _deleteAddress(address),
                         );
                       },
                     ),
@@ -247,13 +280,17 @@ class _AddressCard extends StatelessWidget {
     required this.address,
     required this.isDefault,
     required this.isEditLoading,
+    required this.isDeleteLoading,
     required this.onEdit,
+    required this.onDelete,
   });
 
   final SavedAddress address;
   final bool isDefault;
   final bool isEditLoading;
+  final bool isDeleteLoading;
   final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -330,7 +367,7 @@ class _AddressCard extends StatelessWidget {
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: isEditLoading ? null : onEdit,
+                  onPressed: isEditLoading || isDeleteLoading ? null : onEdit,
                   style: OutlinedButton.styleFrom(
                     foregroundColor: const Color(0xFF0B2A4A),
                     side: const BorderSide(color: Color(0xFFD1D5DB)),
@@ -357,9 +394,7 @@ class _AddressCard extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () {
-                    // TODO: Implement delete address
-                  },
+                  onPressed: isDeleteLoading || isEditLoading ? null : onDelete,
                   style: OutlinedButton.styleFrom(
                     foregroundColor: const Color(0xFFDC2626),
                     side: const BorderSide(color: Color(0xFFD1D5DB)),
@@ -367,10 +402,16 @@ class _AddressCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
-                  icon: const Icon(Icons.delete_outlined, size: 16),
-                  label: const Text(
-                    'Delete',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  icon: isDeleteLoading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.delete_outlined, size: 16),
+                  label: Text(
+                    isDeleteLoading ? 'Deleting...' : 'Delete',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                   ),
                 ),
               ),

@@ -17,6 +17,7 @@ import '../modal/booking_details_modal.dart';
 import '../modal/applied_coupons_modal.dart';
 import '../modal/cart_summary_modal.dart';
 import '../../home/presentation/saved_addresses_screen.dart';
+import '../../shared/widgets/address_selection_bottom_sheet.dart';
 import '../../../network/api_endpoint.dart';
 import 'booking_confirmed_screen.dart';
 import 'widgets/search_partner_dialog.dart';
@@ -145,7 +146,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                       ),
                       const SizedBox(height: 6),
                       _ActionCard(
-                        icon: Icons.add_box_outlined,
+                        icon: Icons.add,
                         title: 'Add more services',
                         isPrimary: false,
                         onTap: () => Navigator.of(context).pop(),
@@ -165,7 +166,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                 const SizedBox(width: 8),
                                 const Expanded(
                                   child: Text(
-                                    'Service address',
+                                    'Service Address',
                                     style: TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w700,
@@ -175,59 +176,71 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                 ),
                                 TextButton(
                                   onPressed: _onChangeAddressTap,
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: const Color(0xFF0EA5E9),
+                                    padding: EdgeInsets.zero,
+                                    minimumSize: Size.zero,
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
                                   child: const Text('Change'),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 8),
-                            _addressSummary(summary),
+                            const SizedBox(height: 6),
+                            Padding(
+                              padding: const EdgeInsets.only(left: 26),
+                              child: _addressSummary(summary),
+                            ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 10),
-                      _SimpleTile(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                const Icon(
-                                  Icons.schedule,
-                                  color: Color(0xFFF59E0B),
-                                  size: 18,
-                                ),
-                                const SizedBox(width: 8),
-                                const Expanded(
-                                  child: Text(
-                                    'Selected slot',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
-                                      color: Color(0xFF0F172A),
+                      if (hasSelectedSlot) ...[
+                        const SizedBox(height: 10),
+                        _SimpleTile(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(
+                                    Icons.schedule,
+                                    color: Color(0xFFF59E0B),
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Expanded(
+                                    child: Text(
+                                      'Selected slot',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF0F172A),
+                                      ),
                                     ),
                                   ),
-                                ),
-                                TextButton(
-                                  onPressed: () => _onSelectSlotTap(summary),
-                                  child: const Text('Change Slot'),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            _slotInfoRow(
-                              icon: Icons.calendar_today_outlined,
-                              label: 'Date',
-                              value: _formatBookingDate(summary.slot.date),
-                            ),
-                            const SizedBox(height: 8),
-                            _slotInfoRow(
-                              icon: Icons.access_time,
-                              label: 'Time',
-                              value: _formatBookingTime(summary.slot.time),
-                            ),
-                          ],
+                                  TextButton(
+                                    onPressed: () => _onSelectSlotTap(summary),
+                                    child: const Text('Change Slot'),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              _slotInfoRow(
+                                icon: Icons.calendar_today_outlined,
+                                label: 'Date',
+                                value: _formatBookingDate(summary.slot.date),
+                              ),
+                              const SizedBox(height: 8),
+                              _slotInfoRow(
+                                icon: Icons.access_time,
+                                label: 'Time',
+                                value: _formatBookingTime(summary.slot.time),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
+                      ],
                       const SizedBox(height: 10),
                       _AppliedCouponsCard(
                         appliedCouponsAsync: appliedCouponsAsync,
@@ -256,7 +269,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                             const Text(
                               'Bill Details',
                               style: TextStyle(
-                                fontSize: 22,
+                                fontSize: 18,
                                 fontWeight: FontWeight.w700,
                                 color: Color(0xFF0F172A),
                               ),
@@ -267,17 +280,21 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                               formatInr(summary.pricing.itemTotal),
                             ),
                             _billRow(
-                              'Add-ons',
-                              formatInr(summary.pricing.addonTotal),
+                              'Tax & fare',
+                              formatInr(summary.pricing.taxAndFee),
+                              isLabelUnderlined: true,
+                              onLabelTap: _showTaxFeeInfoSheet,
                             ),
+                            if (summary.pricing.addonTotal > 0)
+                              _billRow(
+                                'Add-ons',
+                                formatInr(summary.pricing.addonTotal),
+                              ),
                             _billRow(
                               'Discount',
                               '-${formatInr(summary.pricing.discount.abs())}',
-                              valueColor: const Color(0xFF16A34A),
-                            ),
-                            _billRow(
-                              'Tax & fee',
-                              formatInr(summary.pricing.taxAndFee),
+                              labelColor: const Color(0xFF22C55E),
+                              valueColor: const Color(0xFF22C55E),
                             ),
                             const Divider(height: 24, color: Color(0xFFE5E7EB)),
                             _billRow(
@@ -766,12 +783,12 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _AddressSelectionBottomSheet(
+      builder: (_) => AddressSelectionBottomSheet(
         currentAddressId: ref.read(cartProvider).summary?.address?.id,
         onAddNewAddress: () async {
           await Navigator.of(context).push(
             MaterialPageRoute<void>(
-              builder: (_) => const SavedAddressesScreen(),
+              builder: (_) => SavedAddressesScreen(),
             ),
           );
         },
@@ -814,20 +831,49 @@ class _CartScreenState extends ConsumerState<CartScreen> {
   Widget _billRow(
     String label,
     String value, {
+    Color? labelColor,
     Color? valueColor,
     bool isTotal = false,
+    bool isLabelUnderlined = false,
+    VoidCallback? onLabelTap,
   }) {
+    final labelStyle = TextStyle(
+      fontSize: isTotal ? 22 : 15,
+      fontWeight: isTotal ? FontWeight.w700 : FontWeight.w500,
+      color: labelColor ?? const Color(0xFF1F2937),
+    );
+
+    final textPainter = TextPainter(
+      text: TextSpan(text: label, style: labelStyle),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout();
+
+    final labelWidget = isLabelUnderlined
+        ? Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: labelStyle),
+              const SizedBox(height: 4),
+              CustomPaint(
+                size: Size(textPainter.width, 2),
+                painter: const _DottedLinePainter(
+                  color: Color(0xFF1F2937),
+                ),
+              ),
+            ],
+          )
+        : Text(label, style: labelStyle);
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: isTotal ? 22 : 15,
-              fontWeight: isTotal ? FontWeight.w700 : FontWeight.w500,
-              color: const Color(0xFF1F2937),
-            ),
+          InkWell(
+            onTap: onLabelTap,
+            borderRadius: BorderRadius.circular(4),
+            child: labelWidget,
           ),
           const Spacer(),
           Text(
@@ -840,6 +886,82 @@ class _CartScreenState extends ConsumerState<CartScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _showTaxFeeInfoSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Align(
+                  alignment: Alignment.topRight,
+                  child: InkWell(
+                    onTap: () => Navigator.of(context).pop(),
+                    borderRadius: BorderRadius.circular(20),
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(
+                        Icons.close,
+                        size: 20,
+                        color: Color(0xFF6B7280),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Icon(
+                  Icons.receipt_long_outlined,
+                  size: 26,
+                  color: Color(0xFF374151),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'What is Tax & Fare ?',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF111827),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Taxes levied as per govt. regulations subject to change basis final service value. The fee goes towards training of partners and providing support & assistance during the service.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF4B5563),
+                    height: 1.45,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF0B1F3A),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: const Text('Okay, got it'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -886,14 +1008,55 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       );
     }
 
-    return Text(
-      '${address.address}, ${address.city} - ${address.pinCode}',
-      style: const TextStyle(
-        fontSize: 13,
-        color: Color(0xFF111827),
-        height: 1.35,
-      ),
+    final addressLabel = address.label.trim().isEmpty ? 'Home' : address.label;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          addressLabel,
+          style: const TextStyle(
+            fontSize: 13,
+            color: Color(0xFF111827),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '${address.address}, ${address.city} - ${address.pinCode}',
+          style: const TextStyle(
+            fontSize: 12,
+            color: Color(0xFF6B7280),
+            height: 1.35,
+          ),
+        ),
+      ],
     );
+  }
+}
+
+class _DottedLinePainter extends CustomPainter {
+  const _DottedLinePainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    const dotSpacing = 4.0;
+    const dotRadius = 0.9;
+    final y = size.height / 2;
+
+    for (double x = 0; x <= size.width; x += dotSpacing) {
+      canvas.drawCircle(Offset(x, y), dotRadius, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DottedLinePainter oldDelegate) {
+    return oldDelegate.color != color;
   }
 }
 
@@ -1140,329 +1303,7 @@ int _parseInt(Object? value) {
   return int.tryParse(cleaned) ?? 0;
 }
 
-class _AddressSelectionBottomSheet extends ConsumerStatefulWidget {
-  const _AddressSelectionBottomSheet({
-    this.currentAddressId,
-    required this.onAddNewAddress,
-  });
 
-  final int? currentAddressId;
-  final Future<void> Function() onAddNewAddress;
-
-  @override
-  ConsumerState<_AddressSelectionBottomSheet> createState() =>
-      _AddressSelectionBottomSheetState();
-}
-
-class _AddressSelectionBottomSheetState
-    extends ConsumerState<_AddressSelectionBottomSheet> {
-  bool _isLoading = true;
-  bool _isSaving = false;
-  String? _errorMessage;
-  List<SavedAddress> _addresses = const <SavedAddress>[];
-  int? _selectedAddressId;
-
-  @override
-  void initState() {
-    super.initState();
-    _selectedAddressId = widget.currentAddressId;
-    Future.microtask(_loadAddresses);
-  }
-
-  Future<void> _loadAddresses() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final response = await ref.read(addressRepositoryProvider).getAddresses();
-      if (!mounted) {
-        return;
-      }
-
-      final fallbackId = response.addresses.isNotEmpty
-          ? response.addresses.first.id
-          : null;
-      final currentId = _selectedAddressId;
-      final hasCurrentId =
-          currentId != null &&
-          response.addresses.any((item) => item.id == currentId);
-
-      setState(() {
-        _addresses = response.addresses;
-        if (!hasCurrentId) {
-          _selectedAddressId = fallbackId;
-        }
-        _isLoading = false;
-      });
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _errorMessage = error.toString();
-        _isLoading = false;
-      });
-    }
-  }
-
-  void _saveSelection() {
-    final selectedId = _selectedAddressId;
-    if (selectedId == null || _isSaving) {
-      return;
-    }
-
-    final selectedAddress = _addresses.firstWhere(
-      (address) => address.id == selectedId,
-      orElse: () => _addresses.first,
-    );
-
-    setState(() {
-      _isSaving = true;
-    });
-    Navigator.of(context).pop(selectedAddress);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          16,
-          10,
-          16,
-          16 + MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Select Service Address',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF111827),
-                    ),
-                  ),
-                ),
-                IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(
-                    Icons.close,
-                    size: 22,
-                    color: Color(0xFF111827),
-                  ),
-                  splashRadius: 20,
-                ),
-              ],
-            ),
-            InkWell(
-              onTap: () async {
-                Navigator.of(context).pop();
-                await widget.onAddNewAddress();
-              },
-              child: const Padding(
-                padding: EdgeInsets.symmetric(vertical: 6),
-                child: Row(
-                  children: [
-                    Icon(Icons.add, size: 20, color: Color(0xFF0B1F3A)),
-                    SizedBox(width: 8),
-                    Text(
-                      'Add New Address',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF0B1F3A),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            if (_isLoading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (_errorMessage != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Failed to load addresses.',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFFB91C1C),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _errorMessage!,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF6B7280),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    OutlinedButton(
-                      onPressed: _loadAddresses,
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
-              )
-            else if (_addresses.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Text(
-                  'No saved addresses found. Please add an address from Profile > Addresses.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFF6B7280),
-                    height: 1.4,
-                  ),
-                ),
-              )
-            else
-              Flexible(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: _addresses.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
-                  itemBuilder: (context, index) {
-                    final address = _addresses[index];
-                    final isSelected = address.id == _selectedAddressId;
-
-                    return InkWell(
-                      onTap: () {
-                        setState(() {
-                          _selectedAddressId = address.id;
-                        });
-                      },
-                      borderRadius: BorderRadius.circular(12),
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isSelected
-                                ? const Color(0xFF111827)
-                                : const Color(0xFFD1D5DB),
-                          ),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.only(top: 1),
-                              child: Container(
-                                width: 18,
-                                height: 18,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: isSelected
-                                        ? const Color(0xFF111827)
-                                        : const Color(0xFF94A3B8),
-                                    width: 1.8,
-                                  ),
-                                ),
-                                child: isSelected
-                                    ? Center(
-                                        child: Container(
-                                          width: 8,
-                                          height: 8,
-                                          decoration: const BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            color: Color(0xFF111827),
-                                          ),
-                                        ),
-                                      )
-                                    : null,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    address.label,
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
-                                      color: Color(0xFF0F172A),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '${address.address}, ${address.city} - ${address.pinCode}',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Color(0xFF6B7280),
-                                      height: 1.35,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: _addresses.isEmpty || _selectedAddressId == null
-                    ? null
-                    : _saveSelection,
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF0B1F3A),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: _isSaving
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Colors.white,
-                          ),
-                        ),
-                      )
-                    : const Text(
-                        'Save Address',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        ),
-                      ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _ActionCard extends StatelessWidget {
   const _ActionCard({
@@ -1505,7 +1346,7 @@ class _ActionCard extends StatelessWidget {
               Text(
                 title,
                 style: const TextStyle(
-                  fontSize: 17,
+                  fontSize: 16,
                   fontWeight: FontWeight.w600,
                   color: Color(0xFF0097D5),
                 ),
@@ -1674,9 +1515,7 @@ class _CartServiceTile extends ConsumerWidget {
         cartState.isMutating ||
         cartState.mutatingServiceId != null;
     final disableDecrement =
-        item.quantity <= 1 ||
-        cartState.isMutating ||
-        cartState.mutatingServiceId != null;
+      cartState.isMutating || cartState.mutatingServiceId != null;
 
     return Container(
       width: double.infinity,

@@ -115,7 +115,7 @@ class CartController extends StateNotifier<CartState> {
       return;
     }
 
-    if (quantity < 1 || quantity > maxQuantity) {
+    if (quantity < 0 || quantity > maxQuantity) {
       return;
     }
 
@@ -160,7 +160,7 @@ class CartController extends StateNotifier<CartState> {
   Future<void> decrementByServiceId(int serviceId) async {
     final current = quantityForServiceId(serviceId);
     if (current <= 1) {
-      await updateItem(serviceId: serviceId, quantity: 1, action: 'decrement');
+      await updateItem(serviceId: serviceId, quantity: 0, action: 'decrement');
       return;
     }
     await updateItem(

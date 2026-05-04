@@ -45,6 +45,13 @@ class HomeApiEndpoint {
 
   static const String categories = 'categories';
   static const String services = 'services';
+  static String homeByPincode(String pincode) => 'home?pincode=$pincode';
+}
+
+class ServiceabilityApiEndpoint {
+  ServiceabilityApiEndpoint._();
+
+  static const String notify = 'serviceability/notify';
 }
 
 class UserApiEndpoint {

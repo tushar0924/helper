@@ -3,6 +3,7 @@ class ServiceModal {
     required this.id,
     required this.name,
     required this.description,
+    required this.originalPrice,
     required this.price,
     required this.duration,
     required this.rating,
@@ -12,6 +13,7 @@ class ServiceModal {
   final int id;
   final String name;
   final String description;
+  final int originalPrice;
   final int price;
   final int duration;
   final double rating;
@@ -22,6 +24,7 @@ class ServiceModal {
       id: _asInt(json['id']),
       name: json['name']?.toString() ?? '',
       description: json['description']?.toString() ?? '',
+        originalPrice: _asInt(json['originalPrice']),
       price: _asInt(json['price']),
       duration: _asInt(json['duration']),
       rating: _asDouble(json['rating']),
@@ -29,7 +32,19 @@ class ServiceModal {
     );
   }
 
-  String get formattedPrice => '₹$price';
+      int get payablePrice => price > 0 ? price : originalPrice;
+
+      int get displayOriginalPrice =>
+        originalPrice > 0 ? originalPrice : (price > 0 ? price : 0);
+
+      bool get hasDiscount =>
+        originalPrice > 0 && price > 0 && originalPrice != price;
+
+      String get formattedOriginalPrice => '₹$displayOriginalPrice';
+
+      String get formattedPayablePrice => '₹$payablePrice';
+
+      String get formattedPrice => formattedPayablePrice;
 
   String get formattedDuration {
     if (duration <= 0) {

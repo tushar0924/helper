@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/utils/app_toast.dart';
 import '../../../cart/application/cart_provider.dart';
+import 'price_stack.dart';
 
 class MostBookedCard extends ConsumerWidget {
   const MostBookedCard({
@@ -93,14 +94,10 @@ class MostBookedCard extends ConsumerWidget {
           const Spacer(),
           Row(
             children: [
-              Text(
-                price,
-                style: const TextStyle(
-                  fontSize: 10.5,
-                  height: 1.1,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF1E2632),
-                ),
+              PriceStack(
+                originalPrice: null,
+                payablePrice: price,
+                compact: true,
               ),
               const Spacer(),
               _CartActionButton(
@@ -168,6 +165,8 @@ class _CartActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (quantity == 0) {
+      final bgColor = disableIncrement ? const Color(0xFFE5E7EB) : const Color(0xFF09A6E8);
+      final textColor = disableIncrement ? const Color(0xFF9CA3AF) : Colors.white;
       return InkWell(
         onTap: disableIncrement || isAddLoading ? null : onAdd,
         borderRadius: BorderRadius.circular(7),
@@ -175,23 +174,24 @@ class _CartActionButton extends StatelessWidget {
           height: 21,
           width: 38,
           decoration: BoxDecoration(
-            color: const Color(0xFF09A6E8),
+            color: bgColor,
             borderRadius: BorderRadius.circular(7),
           ),
           alignment: Alignment.center,
           child: isAddLoading
-              ? const SizedBox(
+              ? SizedBox(
                   height: 12,
                   width: 12,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                        disableIncrement ? const Color(0xFF9CA3AF) : Colors.white),
                   ),
                 )
-              : const Text(
+              : Text(
                   'Add',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: textColor,
                     fontSize: 8.8,
                     fontWeight: FontWeight.w600,
                   ),
@@ -265,15 +265,15 @@ class _CartActionButton extends StatelessWidget {
                           ),
                         ),
                       )
-                    : const Text(
-                        '+',
-                        style: TextStyle(
-                          color: Color(0xFF09A6E8),
-                          fontSize: 14,
-                          height: 1,
-                          fontWeight: FontWeight.w700,
+                      : Text(
+                          '+',
+                          style: TextStyle(
+                            color: disableIncrement ? const Color(0xFF9CA3AF) : const Color(0xFF09A6E8),
+                            fontSize: 14,
+                            height: 1,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-                      ),
               ),
             ),
           ),

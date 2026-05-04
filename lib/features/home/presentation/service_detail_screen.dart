@@ -7,6 +7,7 @@ import '../../../routes/app_router.dart';
 import '../../cart/application/cart_provider.dart';
 import '../application/service_provider.dart';
 import '../modal/service_modal.dart';
+import 'widgets/price_stack.dart';
 
 class ServiceDetailScreen extends ConsumerStatefulWidget {
   const ServiceDetailScreen({
@@ -608,13 +609,11 @@ class _ServiceCard extends ConsumerWidget {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Text(
-                      item.formattedPrice,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF0F172A),
-                      ),
+                    PriceStack(
+                      originalPrice: item.hasDiscount
+                          ? item.formattedOriginalPrice
+                          : null,
+                      payablePrice: item.formattedPayablePrice,
                     ),
                   ],
                 ),
@@ -954,12 +953,14 @@ class _CartActionButton extends StatelessWidget {
                           ),
                         ),
                       )
-                    : const Text(
+                    : Text(
                         '+',
                         style: TextStyle(
                           fontSize: 18,
                           height: 1,
-                          color: Color(0xFF0EA5C6),
+                          color: disableIncrement
+                              ? const Color(0xFF9CA3AF)
+                              : const Color(0xFF0EA5C6),
                           fontWeight: FontWeight.w700,
                         ),
                       ),
