@@ -36,6 +36,8 @@ class BookingDetailsModal {
     required this.endTimeLabel,
     required this.startOtp,
     required this.serviceDisplayName,
+      required this.categoryName,
+      required this.categoryImageUrl,
     required this.formattedDate,
     required this.formattedTime,
     required this.fullAddress,
@@ -80,6 +82,8 @@ class BookingDetailsModal {
   final String? endTimeLabel;
   final String? startOtp;
   final String serviceDisplayName;
+  final String? categoryName;
+  final String? categoryImageUrl;
   final String? formattedDate;
   final String? formattedTime;
   final String? fullAddress;
@@ -91,14 +95,15 @@ class BookingDetailsModal {
     final helperJson = _asMap(json['helper']);
     final customerJson = _asMap(json['customer']);
     final paymentJson = _asMap(json['payment']);
+    final categoryJson = _asMap(json['category']);
 
     return BookingDetailsModal(
       id: _asInt(json['id']),
-      customerId: _asInt(json['customerId']),
+      customerId: _asInt(json['customerId'] ?? 0),
       serviceId: _asNullableInt(json['serviceId']),
       servicePlanId: _asNullableInt(json['servicePlanId']),
-      categoryId: _asInt(json['categoryId']),
-      helperId: _asInt(json['helperId']),
+      categoryId: _asInt(json['categoryId'] ?? (categoryJson != null ? categoryJson['id'] : 0)),
+      helperId: helperJson != null ? _asInt(helperJson['id']) : _asInt(json['helperId']),
       bookingDate: DateTime.tryParse(json['bookingDate']?.toString() ?? ''),
       startTime: DateTime.tryParse(json['startTime']?.toString() ?? ''),
       endTime: DateTime.tryParse(json['endTime']?.toString() ?? ''),
@@ -132,7 +137,12 @@ class BookingDetailsModal {
       startTimeLabel: json['startTimeLabel']?.toString(),
       endTimeLabel: json['endTimeLabel']?.toString(),
       startOtp: json['startOtp']?.toString(),
-      serviceDisplayName: json['serviceDisplayName']?.toString() ?? 'Service',
+        serviceDisplayName: json['serviceDisplayName']?.toString() ??
+          (categoryJson != null
+            ? (categoryJson['name']?.toString() ?? 'Service')
+            : json['itemsSummary']?['serviceNames']?.toString() ?? 'Service'),
+        categoryName: categoryJson == null ? null : categoryJson['name']?.toString(),
+        categoryImageUrl: categoryJson == null ? null : categoryJson['imageUrl']?.toString(),
       formattedDate: json['formattedDate']?.toString(),
       formattedTime: json['formattedTime']?.toString(),
       fullAddress: json['fullAddress']?.toString(),
@@ -310,10 +320,12 @@ class BookingPaymentModal {
   final DateTime? updatedAt;
 
   factory BookingPaymentModal.fromJson(Map<String, dynamic> json) {
+    // API returns different shapes for payment between endpoints.
+    // Support both detailed payment object and lightweight one.
     return BookingPaymentModal(
-      id: _asInt(json['id']),
-      bookingId: _asInt(json['bookingId']),
-      amount: _asInt(json['amount']),
+      id: _asInt(json['id'] ?? 0),
+      bookingId: _asInt(json['bookingId'] ?? json['id'] ?? 0),
+      amount: _asInt(json['amount'] ?? 0),
       status: json['status']?.toString().toUpperCase() ?? '',
       transactionId: json['transactionId']?.toString(),
       razorpayOrderId: json['razorpayOrderId']?.toString(),
@@ -321,7 +333,7 @@ class BookingPaymentModal {
       method: json['method']?.toString(),
       escrowStatus: json['escrowStatus']?.toString().toUpperCase(),
       refundReason: json['refundReason']?.toString(),
-      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? ''),
+      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? json['expiresAt']?.toString() ?? ''),
       updatedAt: DateTime.tryParse(json['updatedAt']?.toString() ?? ''),
     );
   }

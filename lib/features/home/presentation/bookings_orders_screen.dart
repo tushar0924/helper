@@ -17,11 +17,28 @@ class BookingsOrdersScreen extends ConsumerStatefulWidget {
 class _BookingsOrdersScreenState extends ConsumerState<BookingsOrdersScreen> {
   late Future<List<BookingDetailsModal>> _future;
   int _selectedIndex = 0; // 0 = Helper4u, 1 = Kirana4u
+  late TextEditingController _searchController;
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
     _future = _loadBookings();
+    _searchController = TextEditingController();
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    setState(() {
+      _searchQuery = _searchController.text.toLowerCase();
+    });
   }
 
   Future<List<BookingDetailsModal>> _loadBookings() async {
@@ -79,17 +96,31 @@ class _BookingsOrdersScreenState extends ConsumerState<BookingsOrdersScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: Row(
-        children: const [
-          Icon(Icons.search, color: Color(0xFF9CA3AF)),
-          SizedBox(width: 8),
+        children: [
+          const Icon(Icons.search, color: Color(0xFF9CA3AF)),
+          const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              'Search for help or stores nearby...',
-              style: TextStyle(color: Color(0xFF9CA3AF)),
+            child: TextField(
+              controller: _searchController,
+              decoration: const InputDecoration(
+                hintText: 'Search by category...',
+                hintStyle: TextStyle(color: Color(0xFF9CA3AF)),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.symmetric(vertical: 8),
+              ),
+              style: const TextStyle(color: Color(0xFF111827)),
             ),
           ),
+          if (_searchQuery.isNotEmpty)
+            GestureDetector(
+              onTap: () {
+                _searchController.clear();
+                _onSearchChanged();
+              },
+              child: const Icon(Icons.close, color: Color(0xFF9CA3AF)),
+            ),
         ],
       ),
     );
@@ -197,11 +228,21 @@ class _BookingsOrdersScreenState extends ConsumerState<BookingsOrdersScreen> {
           );
         }
 
-        final bookings = snapshot.data ?? <BookingDetailsModal>[];
+        var bookings = snapshot.data ?? <BookingDetailsModal>[];
+        
+        // Filter by search query
+        if (_searchQuery.isNotEmpty) {
+          bookings = bookings.where((b) {
+            final categoryName = b.categoryName?.toLowerCase() ?? '';
+            final serviceName = b.serviceDisplayName.toLowerCase();
+            return categoryName.contains(_searchQuery) || serviceName.contains(_searchQuery);
+          }).toList();
+        }
+
         if (bookings.isEmpty) {
           return Center(
             child: Text(
-              'No bookings found',
+              _searchQuery.isNotEmpty ? 'No bookings found for "$_searchQuery"' : 'No bookings found',
               style: TextStyle(color: Colors.grey[600]),
             ),
           );
@@ -282,7 +323,7 @@ class _BookingsOrdersScreenState extends ConsumerState<BookingsOrdersScreen> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    _buildBookingThumbnail(),
+                    _buildBookingThumbnail(b),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
@@ -377,7 +418,23 @@ class _BookingsOrdersScreenState extends ConsumerState<BookingsOrdersScreen> {
     );
   }
 
-  Widget _buildBookingThumbnail() {
+  Widget _buildBookingThumbnail(BookingDetailsModal b) {
+    final img = b.categoryImageUrl;
+    if (img != null && img.isNotEmpty) {
+      return Container(
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          color: const Color(0xFFF3F4F6),
+          image: DecorationImage(
+            image: NetworkImage(img),
+            fit: BoxFit.cover,
+          ),
+        ),
+      );
+    }
+
     return Container(
       width: 30,
       height: 30,
