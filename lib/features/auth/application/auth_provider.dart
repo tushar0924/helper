@@ -70,6 +70,25 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
+  Future<void> completeProfile({
+    required String fullName,
+    required String gender,
+    String? email,
+  }) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      await _repository.completeProfile(
+        fullName: fullName,
+        gender: gender,
+        email: email,
+      );
+      state = state.copyWith(isLoading: false);
+    } catch (error) {
+      state = state.copyWith(isLoading: false, errorMessage: error.toString());
+      rethrow;
+    }
+  }
+
   Future<void> logout() async {
     await _repository.logout();
   }

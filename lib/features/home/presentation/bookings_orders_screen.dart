@@ -241,228 +241,273 @@ class _BookingsOrdersScreenState extends ConsumerState<BookingsOrdersScreen> {
   }
 
   Widget _buildBookingCard(BookingDetailsModal b) {
-    Color statusColor = const Color(0xFFDCFCE7);
-    Color statusTextColor = const Color(0xFF059669);
-    String statusLabel = 'In Progress';
-    bool isInProgress = true;
+    final status = _bookingStatusFor(b.status);
 
-    if (b.status.toLowerCase().contains('cancel')) {
-      statusColor = const Color(0xFFFFEBEE);
-      statusTextColor = const Color(0xFFDC2626);
-      statusLabel = 'Cancelled';
-      isInProgress = false;
-    } else if (b.status.toLowerCase().contains('complete')) {
-      statusColor = const Color(0xFFF3F4F6);
-      statusTextColor = const Color(0xFF059669);
-      statusLabel = 'Completed';
-      isInProgress = false;
-    }
-
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
-      ),
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => BookingDetailScreen(bookingId: b.id),
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE6EAF0)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x0A0F172A),
+                blurRadius: 14,
+                offset: Offset(0, 5),
+              ),
+            ],
+          ),
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(
-                  b.serviceDisplayName,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF111827),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: statusColor,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Text(
-                  statusLabel,
-                  style: TextStyle(
-                    color: statusTextColor,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF9FAFB),
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Icon(
-                Icons.calendar_today,
-                size: 18,
-                color: const Color(0xFF9CA3AF),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                b.displayDateLabel,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: Color(0xFF6B7280),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Icon(
-                Icons.access_time,
-                size: 18,
-                color: const Color(0xFF9CA3AF),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                b.displayTimeLabel,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: Color(0xFF6B7280),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Icon(
-                Icons.currency_rupee,
-                size: 18,
-                color: const Color(0xFF9CA3AF),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                '₹${b.finalAmount}',
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: Color(0xFF6B7280),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          if (isInProgress)
-            Row(
-              children: [
-                Expanded(
-                  child: TextButton(
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => BookingDetailScreen(bookingId: b.id),
-                        ),
-                      );
-                    },
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                      minimumSize: const Size(0, 0),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: const [
-                        Text(
-                          'View Detail',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF6B7280),
-                          ),
-                        ),
-                        SizedBox(width: 6),
-                        Icon(Icons.chevron_right, size: 18, color: Color(0xFF6B7280)),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () {},
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0B2A4A),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      elevation: 0,
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: const [
-                        Text(
-                          'View Progress',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        SizedBox(width: 6),
-                        Icon(Icons.chevron_right, size: 18, color: Colors.white),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            )
-          else
-            SizedBox(
-              width: double.infinity,
-              child: TextButton(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => BookingDetailScreen(bookingId: b.id),
-                    ),
-                  );
-                },
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                  minimumSize: const Size(0, 0),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
-                    Text(
-                      'View Details',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF6B7280),
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    _buildBookingThumbnail(),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        b.serviceDisplayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14.5,
+                          height: 1.1,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF111827),
+                        ),
                       ),
                     ),
-                    SizedBox(width: 6),
-                    Icon(Icons.chevron_right, size: 18, color: Color(0xFF6B7280)),
+                    const SizedBox(width: 10),
+                    _BookingStatusPill(status: status),
                   ],
                 ),
               ),
+              const Divider(height: 1, thickness: 1, color: Color(0xFFF0F2F5)),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 13),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _BookingMetaRow(
+                      icon: Icons.calendar_today_outlined,
+                      text: b.displayDateLabel,
+                    ),
+                    const SizedBox(height: 8),
+                    _BookingMetaRow(
+                      icon: Icons.access_time_outlined,
+                      text: b.displayTimeLabel,
+                    ),
+                    const SizedBox(height: 8),
+                    _BookingMetaRow(
+                      icon: Icons.currency_rupee,
+                      text: '₹${b.finalAmount}',
+                    ),
+                    if (status.showRatings) ...[
+                      const SizedBox(height: 14),
+                      const Divider(height: 1, thickness: 1, color: Color(0xFFF0F2F5)),
+                      const SizedBox(height: 10),
+                      const Row(
+                        children: [
+                          Expanded(
+                            child: _BookingRatingBlock(title: 'Service Rating'),
+                          ),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: _BookingRatingBlock(title: 'Partner Rating'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  _BookingStatusData _bookingStatusFor(String status) {
+    final lower = status.toLowerCase();
+    if (lower.contains('cancel')) {
+      return const _BookingStatusData(
+        label: 'Canceled',
+        backgroundColor: Color(0xFFFFF1F2),
+        foregroundColor: Color(0xFFEF4444),
+        icon: Icons.cancel_rounded,
+        showRatings: false,
+      );
+    }
+    if (lower.contains('complete')) {
+      return const _BookingStatusData(
+        label: 'Completed',
+        backgroundColor: Color(0xFFEFFAF3),
+        foregroundColor: Color(0xFF16A34A),
+        icon: Icons.check_circle_rounded,
+        showRatings: true,
+      );
+    }
+    return const _BookingStatusData(
+      label: 'Scheduled',
+      backgroundColor: Color(0xFFFFF7ED),
+      foregroundColor: Color(0xFFF97316),
+      icon: Icons.event_available_rounded,
+      showRatings: false,
+    );
+  }
+
+  Widget _buildBookingThumbnail() {
+    return Container(
+      width: 30,
+      height: 30,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(6),
+        color: const Color(0xFFE8D6B8),
+      ),
+      child: const Center(
+        child: Icon(
+          Icons.cleaning_services_outlined,
+          size: 16,
+          color: Color(0xFF6B4F3B),
+        ),
+      ),
+    );
+  }
+}
+
+class _BookingStatusData {
+  const _BookingStatusData({
+    required this.label,
+    required this.backgroundColor,
+    required this.foregroundColor,
+    required this.icon,
+    required this.showRatings,
+  });
+
+  final String label;
+  final Color backgroundColor;
+  final Color foregroundColor;
+  final IconData icon;
+  final bool showRatings;
+}
+
+class _BookingStatusPill extends StatelessWidget {
+  const _BookingStatusPill({required this.status});
+
+  final _BookingStatusData status;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: status.backgroundColor,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(status.icon, size: 14, color: status.foregroundColor),
+          const SizedBox(width: 4),
+          Text(
+            status.label,
+            style: TextStyle(
+              color: status.foregroundColor,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
             ),
+          ),
         ],
       ),
+    );
+  }
+}
+
+class _BookingMetaRow extends StatelessWidget {
+  const _BookingMetaRow({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: const Color(0xFF94A3B8)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 13.5,
+              height: 1.18,
+              color: Color(0xFF64748B),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BookingRatingBlock extends StatelessWidget {
+  const _BookingRatingBlock({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 10,
+            height: 1.1,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF334155),
+          ),
+        ),
+        const SizedBox(height: 7),
+        Row(
+          children: List.generate(5, (index) {
+            final filled = index == 0;
+            return Padding(
+              padding: EdgeInsets.only(right: index == 4 ? 0 : 3),
+              child: Icon(
+                Icons.star,
+                size: 14,
+                color: filled ? const Color(0xFFFACC15) : const Color(0xFFD1D5DB),
+              ),
+            );
+          }),
+        ),
+      ],
     );
   }
 }

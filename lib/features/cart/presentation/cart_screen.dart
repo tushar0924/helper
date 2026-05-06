@@ -18,6 +18,7 @@ import '../modal/applied_coupons_modal.dart';
 import '../modal/cart_summary_modal.dart';
 import '../../home/presentation/saved_addresses_screen.dart';
 import '../../shared/widgets/address_selection_bottom_sheet.dart';
+import '../../home/presentation/widgets/location_picker_bottom_sheet.dart';
 import '../../../network/api_endpoint.dart';
 import 'booking_confirmed_screen.dart';
 import 'widgets/search_partner_dialog.dart';
@@ -33,6 +34,7 @@ class CartScreen extends ConsumerStatefulWidget {
 
 class _CartScreenState extends ConsumerState<CartScreen> {
   bool _isSearchingPartner = false;
+  bool _searchCancelRequested = false;
   io.Socket? _bookingSocket;
   Completer<int?>? _pendingAcceptCompleter;
   Timer? _pendingAcceptTimeout;
@@ -361,13 +363,17 @@ class _CartScreenState extends ConsumerState<CartScreen> {
 
     setState(() {
       _isSearchingPartner = true;
+      _searchCancelRequested = false;
     });
 
     await _ensureBookingSocketConnected();
 
     final idempotencyKey = _generateIdempotencyKey();
     var searchDialogDismissed = false;
-    final dialogFuture = showSearchPartnerDialog(context).whenComplete(() {
+    final dialogFuture = showSearchPartnerDialog(
+      context,
+      onCancelConfirmed: _cancelPendingBookingRequest,
+    ).whenComplete(() {
       searchDialogDismissed = true;
       if (mounted && _isSearchingPartner) {
         setState(() {
@@ -401,22 +407,97 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       return;
     }
 
-    if (result!.message.trim().isNotEmpty) {
-      AppToast.success(result.message);
+    final createdResult = result!;
+
+    if (createdResult.message.trim().isNotEmpty) {
+      AppToast.success(createdResult.message);
     }
 
-    int? bookingId = result.bookingId;
-    final bookingRequestId = result.bookingRequestId;
-    if ((bookingId == null || bookingId <= 0) &&
+    int? bookingId = createdResult.bookingId;
+    var bookingRequestId = createdResult.bookingRequestId;
+    var abortedByUser = false;
+    while ((bookingId == null || bookingId <= 0) &&
         bookingRequestId != null &&
         bookingRequestId > 0) {
       bookingId = await _waitForBookingAcceptanceViaSocket(
         bookingRequestId: bookingRequestId,
-        timeout: Duration(seconds: (result.acceptanceWindowSeconds ?? 30) + 5),
+        timeout:
+            Duration(seconds: (createdResult.acceptanceWindowSeconds ?? 30) + 5),
       );
+
       if (searchDialogDismissed) {
         return;
       }
+
+      if (_searchCancelRequested) {
+        await dialogFuture;
+        return;
+      }
+
+      if (bookingId != null && bookingId > 0) {
+        break;
+      }
+
+      final shouldRetry = await showNoPartnerAcceptedDialog(context);
+      if (!shouldRetry || !mounted) {
+        abortedByUser = true;
+        break;
+      }
+
+      try {
+        final retryResponse = await ref
+            .read(cartRepositoryProvider)
+            .retryBookingRequest(bookingRequestId: bookingRequestId);
+        final retryData = retryResponse['data'];
+        final nextRequestId = _toInt(
+          retryData is Map<String, dynamic>
+              ? retryData['requestId'] ?? retryData['id']
+              : null,
+        );
+        final nextTimeoutSeconds = _toInt(
+              retryData is Map<String, dynamic>
+                  ? retryData['timeoutSeconds']
+                  : null,
+            ) ??
+            30;
+
+        if (nextRequestId == null || nextRequestId <= 0) {
+          AppToast.error('Unable to retry booking request');
+          break;
+        }
+
+        bookingRequestId = nextRequestId;
+        result = CreateFromCartResult(
+          message: createdResult.message,
+          status: createdResult.status,
+          bookingId: createdResult.bookingId,
+          bookingRequestId: bookingRequestId,
+          acceptanceWindowSeconds: nextTimeoutSeconds,
+        );
+        continue;
+      } catch (error) {
+        if (mounted) {
+          AppToast.error(error.toString());
+        }
+        break;
+      }
+    }
+
+    if (_searchCancelRequested || abortedByUser) {
+      if (!searchDialogDismissed) {
+        await _closeSearchDialog(dialogFuture);
+      } else {
+        await dialogFuture;
+      }
+
+      if (mounted && _isSearchingPartner) {
+        setState(() {
+          _isSearchingPartner = false;
+        });
+      }
+
+      await dialogFuture;
+      return;
     }
 
     if (!searchDialogDismissed) {
@@ -726,6 +807,49 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     await dialogFuture;
   }
 
+  Future<void> _cancelPendingBookingRequest() async {
+    _searchCancelRequested = true;
+    try {
+      final bookingRequestId = await _resolvePendingBookingRequestId();
+      if (bookingRequestId == null || bookingRequestId <= 0) {
+        throw StateError('Booking request is not ready to cancel yet');
+      }
+
+      await ref.read(cartRepositoryProvider).cancelBookingRequest(
+            bookingRequestId: bookingRequestId,
+          );
+
+      _pendingAcceptTimeout?.cancel();
+      _pendingAcceptTimeout = null;
+      if (!(_pendingAcceptCompleter?.isCompleted ?? true)) {
+        _pendingAcceptCompleter?.complete(null);
+      }
+      _pendingBookingRequestId = null;
+
+      if (mounted) {
+        AppToast.success('Booking request cancelled successfully');
+      }
+    } catch (_) {
+      _searchCancelRequested = false;
+      rethrow;
+    }
+  }
+
+  Future<int?> _resolvePendingBookingRequestId() async {
+    if (_pendingBookingRequestId != null && _pendingBookingRequestId! > 0) {
+      return _pendingBookingRequestId;
+    }
+
+    for (var attempt = 0; attempt < 25; attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      if (_pendingBookingRequestId != null && _pendingBookingRequestId! > 0) {
+        return _pendingBookingRequestId;
+      }
+    }
+
+    return null;
+  }
+
   Map<String, dynamic>? _toMap(dynamic payload) {
     if (payload is Map<String, dynamic>) {
       return payload;
@@ -776,23 +900,14 @@ class _CartScreenState extends ConsumerState<CartScreen> {
   }
 
   Future<void> _onChangeAddressTap() async {
-    final selectedAddress = await showModalBottomSheet<SavedAddress>(
+    final selectedAddress = await showModalBottomSheet<SavedAddress?>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => AddressSelectionBottomSheet(
-        currentAddressId: ref.read(cartProvider).summary?.address?.id,
-        onAddNewAddress: () async {
-          await Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => SavedAddressesScreen(),
-            ),
-          );
-        },
-      ),
+      builder: (_) => const LocationPickerBottomSheet(),
     );
 
     if (!mounted || selectedAddress == null) {

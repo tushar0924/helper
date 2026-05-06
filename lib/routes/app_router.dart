@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 
+import '../features/auth/presentation/complete_profile_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
 import '../features/auth/presentation/otp_screen.dart';
 import '../features/auth/presentation/signup_screen.dart';
@@ -19,6 +20,7 @@ class AppRouter {
   static const String login = '/login';
   static const String signup = '/signup';
   static const String otp = '/otp';
+  static const String completeProfile = '/complete-profile';
   static const String home = '/home';
   static const String homeComingSoon = '/home-coming-soon';
   static const String kiranaComingSoon = '/kirana-coming-soon';
@@ -32,6 +34,7 @@ class AppRouter {
     login: (_) => const LoginScreen(),
     signup: (_) => const SignupScreen(),
     otp: (_) => const OtpScreen(),
+    completeProfile: (_) => const CompleteProfileScreen(),
     home: (_) => const MainNavigationScreen(),
     homeComingSoon: (_) =>
         const ComingSoonScreen(selectedTab: MainTab.home, pageLabel: 'Home'),

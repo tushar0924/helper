@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../app/utils/app_toast.dart';
 
 import '../../auth/application/auth_provider.dart';
 import '../../../routes/app_router.dart';
@@ -114,14 +115,143 @@ class ProfileScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 22),
             OutlinedButton.icon(
-              onPressed: () async {
-                await ref.read(authControllerProvider.notifier).logout();
-                if (!context.mounted) {
-                  return;
-                }
-                Navigator.of(
-                  context,
-                ).pushNamedAndRemoveUntil(AppRouter.login, (route) => false);
+              onPressed: () {
+                showDialog<void>(
+                  context: context,
+                  barrierDismissible: true,
+                  builder: (dialogContext) {
+                    var isLoading = false;
+                    return StatefulBuilder(
+                      builder: (context, setState) {
+                        return Dialog(
+                          backgroundColor: Colors.white,
+                          elevation: 8,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const SizedBox(height: 6),
+                                const Text(
+                                  'Log out?',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF111827),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                const Text(
+                                  'Are you sure you want to log out of your account?',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Color(0xFF6B7280),
+                                  ),
+                                ),
+                                const SizedBox(height: 18),
+                                SizedBox(
+                                  height: 48,
+                                  child: ElevatedButton(
+                                    onPressed: isLoading
+                                        ? null
+                                        : () async {
+                                            setState(() {
+                                              isLoading = true;
+                                            });
+                                            try {
+                                              await ref
+                                                  .read(
+                                                    authControllerProvider
+                                                        .notifier,
+                                                  )
+                                                  .logout();
+                                              if (!dialogContext.mounted) {
+                                                return;
+                                              }
+                                              Navigator.of(dialogContext).pop();
+                                              if (!context.mounted) return;
+                                              Navigator.of(
+                                                context,
+                                              ).pushNamedAndRemoveUntil(
+                                                AppRouter.login,
+                                                (route) => false,
+                                              );
+                                            } catch (e) {
+                                              setState(() {
+                                                isLoading = false;
+                                              });
+                                              AppToast.error(e.toString());
+                                            }
+                                          },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF0F2A47),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                    child: isLoading
+                                        ? const SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              valueColor:
+                                                  AlwaysStoppedAnimation<Color>(
+                                                    Colors.white,
+                                                  ),
+                                            ),
+                                          )
+                                        : const Text(
+                                            'Log out',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: 15,
+                                            ),
+                                          ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  height: 44,
+                                  child: OutlinedButton(
+                                    onPressed: () {
+                                      Navigator.of(dialogContext).pop();
+                                    },
+                                    style: OutlinedButton.styleFrom(
+                                      backgroundColor: Colors.white,
+                                      side: const BorderSide(
+                                        color: Color(0xFFE5E7EB),
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      'Cancel',
+                                      style: TextStyle(
+                                        color: Color(0xFF111827),
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                );
               },
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size.fromHeight(48),

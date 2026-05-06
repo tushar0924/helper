@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
 
-Future<void> showSearchPartnerDialog(BuildContext context) async {
+import '../../../../app/utils/app_toast.dart';
+
+Future<void> showSearchPartnerDialog(
+  BuildContext context, {
+  Future<void> Function()? onCancelConfirmed,
+}) async {
   await showDialog<void>(
     context: context,
     barrierDismissible: false,
     barrierColor: Colors.black54,
-    builder: (_) => const _SearchPartnerDialog(),
+    builder: (_) => _SearchPartnerDialog(
+      onCancelConfirmed: onCancelConfirmed,
+    ),
   );
 }
 
@@ -176,7 +183,9 @@ Future<bool> showNoPartnerAcceptedDialog(BuildContext context) async {
 }
 
 class _SearchPartnerDialog extends StatefulWidget {
-  const _SearchPartnerDialog();
+  const _SearchPartnerDialog({this.onCancelConfirmed});
+
+  final Future<void> Function()? onCancelConfirmed;
 
   @override
   State<_SearchPartnerDialog> createState() => _SearchPartnerDialogState();
@@ -188,8 +197,18 @@ class _SearchPartnerDialogState extends State<_SearchPartnerDialog> {
     if (!mounted || !shouldCancel) {
       return;
     }
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
+    try {
+      if (widget.onCancelConfirmed != null) {
+        await widget.onCancelConfirmed!();
+      }
+
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+    } catch (error) {
+      if (mounted) {
+        AppToast.error(error.toString());
+      }
     }
   }
 

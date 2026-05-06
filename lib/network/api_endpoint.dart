@@ -66,6 +66,7 @@ class UserApiEndpoint {
 
   static const String me = 'user/me';
   static const String profile = 'user/profile';
+  static const String completeProfile = 'user/complete-profile';
   static const String addresses = 'user/addresses';
 
   static String bookingById(int bookingId) => 'user/bookings/$bookingId';
@@ -92,6 +93,12 @@ class BookingRequestApiEndpoint {
   BookingRequestApiEndpoint._();
 
   static const String createFromCart = 'booking-requests/create-from-cart';
+
+  static String cancel(int bookingRequestId) =>
+      'booking-requests/$bookingRequestId/cancel';
+
+  static String retry(int bookingRequestId) =>
+      'booking-requests/$bookingRequestId/retry';
 }
 
 class PaymentApiEndpoint {

@@ -13,6 +13,7 @@ class SessionManager {
   static const String _roleKey = 'session_role';
   static const String _expiresInKey = 'session_expires_in';
   static const String _isComingSoonKey = 'session_is_coming_soon';
+  static const String _selectedLocationKey = 'session_selected_location';
 
   Future<void> saveSession({
     required String accessToken,
@@ -115,6 +116,20 @@ class SessionManager {
     return prefs.getBool(_isComingSoonKey) ?? false;
   }
 
+  Future<void> saveSelectedLocationJson(String json) async {
+    final prefs = await _prefsFuture;
+    if (json.trim().isEmpty) {
+      await prefs.remove(_selectedLocationKey);
+      return;
+    }
+    await prefs.setString(_selectedLocationKey, json);
+  }
+
+  Future<String?> get selectedLocationJson async {
+    final prefs = await _prefsFuture;
+    return prefs.getString(_selectedLocationKey);
+  }
+
   Future<void> clearSession() async {
     final prefs = await _prefsFuture;
     await prefs.remove(_accessTokenKey);
@@ -125,5 +140,6 @@ class SessionManager {
     await prefs.remove(_roleKey);
     await prefs.remove(_expiresInKey);
     await prefs.remove(_isComingSoonKey);
+    await prefs.remove(_selectedLocationKey);
   }
 }

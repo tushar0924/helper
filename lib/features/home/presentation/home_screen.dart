@@ -8,14 +8,12 @@ import '../application/banner_provider.dart';
 import '../application/category_provider.dart';
 import '../application/home_bootstrap_provider.dart';
 import '../../cart/application/cart_provider.dart';
-import '../data/address_models.dart';
 import '../modal/banner_modal.dart';
 import '../modal/category_modal.dart';
 import '../../../routes/app_router.dart';
 import 'profile_screen.dart';
 import 'widgets/category_skeleton_grid.dart';
-import 'saved_addresses_screen.dart';
-import '../../shared/widgets/address_selection_bottom_sheet.dart';
+import 'widgets/location_picker_bottom_sheet.dart';
 import 'widgets/most_booked_card.dart';
 import 'widgets/offer_card.dart';
 import 'widgets/service_tile.dart';
@@ -61,8 +59,10 @@ class HelperTabView extends ConsumerStatefulWidget {
 class _HelperTabViewState extends ConsumerState<HelperTabView>
     with WidgetsBindingObserver {
   final ScrollController _scrollController = ScrollController();
+  final TextEditingController _searchController = TextEditingController();
   bool _isNotifySubmitting = false;
   bool _showPinnedSearch = false;
+  String _categoryQuery = '';
 
   @override
   void initState() {
@@ -71,7 +71,7 @@ class _HelperTabViewState extends ConsumerState<HelperTabView>
     _scrollController.addListener(_handleScroll);
     Future.microtask(() {
       ref.invalidate(bannerProvider(null));
-      ref.read(homeBootstrapProvider.notifier).loadForCurrentLocation();
+      ref.read(homeBootstrapProvider.notifier).loadInitialLocation();
     });
   }
 
@@ -81,6 +81,7 @@ class _HelperTabViewState extends ConsumerState<HelperTabView>
     _scrollController
       ..removeListener(_handleScroll)
       ..dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -109,8 +110,8 @@ class _HelperTabViewState extends ConsumerState<HelperTabView>
   }
 
   void _handleScroll() {
-    final shouldShow = _scrollController.hasClients &&
-        _scrollController.offset > 180;
+    final shouldShow =
+        _scrollController.hasClients && _scrollController.offset > 180;
     if (shouldShow == _showPinnedSearch) {
       return;
     }
@@ -121,7 +122,7 @@ class _HelperTabViewState extends ConsumerState<HelperTabView>
   }
 
   Future<void> _refreshHomePage() async {
-    await ref.read(homeBootstrapProvider.notifier).loadForCurrentLocation();
+    await ref.read(homeBootstrapProvider.notifier).loadInitialLocation();
     await ref
         .read(categoryControllerProvider.notifier)
         .loadCategories(forceRefresh: true);
@@ -129,7 +130,7 @@ class _HelperTabViewState extends ConsumerState<HelperTabView>
 
     final city = _currentBannerCity();
     try {
-      await ref.refresh(bannerProvider(city).future);
+      final _ = await ref.refresh(bannerProvider(city).future);
     } catch (_) {
       // Banner failures are already surfaced by the UI state.
     }
@@ -157,10 +158,9 @@ class _HelperTabViewState extends ConsumerState<HelperTabView>
     });
 
     try {
-      await ref.read(homeBootstrapRepositoryProvider).notifyServiceability(
-        pincode: pincode,
-        userId: userId,
-      );
+      await ref
+          .read(homeBootstrapRepositoryProvider)
+          .notifyServiceability(pincode: pincode, userId: userId);
     } catch (_) {
       // ApiClient already shows toast for failures.
     } finally {
@@ -173,51 +173,21 @@ class _HelperTabViewState extends ConsumerState<HelperTabView>
   }
 
   Future<void> _onChangeLocationTap() async {
-    final selectedAddress = await showModalBottomSheet<SavedAddress>(
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => AddressSelectionBottomSheet(
-        currentAddressId: ref.read(cartProvider).summary?.address?.id,
-        onAddNewAddress: () async {
-          await Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => SavedAddressesScreen(),
-            ),
-          );
-        },
-      ),
+      builder: (_) => const LocationPickerBottomSheet(),
     );
+  }
 
-    if (!mounted || selectedAddress == null) {
-      return;
-    }
-
-    await ref
-        .read(cartProvider.notifier)
-        .updateAddress(addressId: selectedAddress.id);
-
-    if (!mounted) {
-      return;
-    }
-
-    final state = ref.read(cartProvider);
-    if (state.errorMessage == null || state.errorMessage!.isEmpty) {
-      AppToast.success('Address updated successfully');
-    }
-
-    final pincode = selectedAddress.pinCode.replaceAll(RegExp(r'[^0-9]'), '');
-    await ref.read(homeBootstrapProvider.notifier).loadForPincode(
-      pincode: pincode,
-      city: selectedAddress.city,
-      locationLine:
-          '${selectedAddress.address}, ${selectedAddress.city} - ${selectedAddress.pinCode}',
-    );
-    ref.invalidate(bannerProvider(selectedAddress.city.trim()));
-    ref.invalidate(bannerProvider(null));
+  void _updateCategoryQuery(String value) {
+    setState(() {
+      _categoryQuery = value;
+    });
   }
 
   @override
@@ -250,9 +220,7 @@ class _HelperTabViewState extends ConsumerState<HelperTabView>
               onRefresh: _refreshHomePage,
               child: SingleChildScrollView(
                 controller: _scrollController,
-                physics: const AlwaysScrollableScrollPhysics(
-                  parent: BouncingScrollPhysics(),
-                ),
+                physics: const AlwaysScrollableScrollPhysics(),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -260,7 +228,9 @@ class _HelperTabViewState extends ConsumerState<HelperTabView>
                       fallbackLocationLine: homeBootstrapState.locationLine,
                       isFetchingCurrentLocation:
                           homeBootstrapState.isLoading &&
-                              !homeBootstrapState.hasLoaded,
+                          !homeBootstrapState.hasLoaded,
+                      searchController: _searchController,
+                      onSearchChanged: _updateCategoryQuery,
                     ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
@@ -284,7 +254,10 @@ class _HelperTabViewState extends ConsumerState<HelperTabView>
                             ),
                           ),
                           const SizedBox(height: 4),
-                          _CategoryGrid(categoryState: categoryState),
+                          _CategoryGrid(
+                            categoryState: categoryState,
+                            searchQuery: _categoryQuery,
+                          ),
                           const SizedBox(height: 12),
                           const _OfferCarousel(),
                           const SizedBox(height: 10),
@@ -348,6 +321,8 @@ class _HelperTabViewState extends ConsumerState<HelperTabView>
                       ),
                     );
                   },
+                  searchController: _searchController,
+                  onSearchChanged: _updateCategoryQuery,
                 ),
               ),
             ),
@@ -363,11 +338,15 @@ class _PinnedSearchHeader extends StatelessWidget {
     required this.cartCount,
     required this.onCartTap,
     required this.onProfileTap,
+    required this.searchController,
+    required this.onSearchChanged,
   });
 
   final int cartCount;
   final VoidCallback onCartTap;
   final VoidCallback onProfileTap;
+  final TextEditingController searchController;
+  final ValueChanged<String> onSearchChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -394,30 +373,32 @@ class _PinnedSearchHeader extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: const Color(0xFFE5E7EB)),
               ),
-              child: const Row(
-                children: [
-                  SizedBox(width: 12),
-                  Icon(Icons.search, size: 18, color: Color(0xFF6B7280)),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Search services...',
-                      style: TextStyle(
-                        color: Color(0xFF6B7280),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
+              child: TextField(
+                controller: searchController,
+                onChanged: onSearchChanged,
+                decoration: const InputDecoration(
+                  hintText: 'Search services...',
+                  hintStyle: TextStyle(
+                    color: Color(0xFF6B7280),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
                   ),
-                  Padding(
+                  prefixIcon: Icon(
+                    Icons.search,
+                    size: 18,
+                    color: Color(0xFF6B7280),
+                  ),
+                  suffixIcon: Padding(
                     padding: EdgeInsets.only(right: 12),
-                    child: Icon(
-                      Icons.mic,
-                      color: Color(0xFF0A2440),
-                      size: 16,
-                    ),
+                    child: Icon(Icons.mic, color: Color(0xFF0A2440), size: 16),
                   ),
-                ],
+                  suffixIconConstraints: BoxConstraints(
+                    minWidth: 0,
+                    minHeight: 0,
+                  ),
+                  border: InputBorder.none,
+                  contentPadding: EdgeInsets.symmetric(vertical: 14),
+                ),
               ),
             ),
           ),
@@ -428,10 +409,7 @@ class _PinnedSearchHeader extends StatelessWidget {
             badgeCount: cartCount,
           ),
           const SizedBox(width: 8),
-          _HeaderCircleButton(
-            icon: Icons.person,
-            onTap: onProfileTap,
-          ),
+          _HeaderCircleButton(icon: Icons.person, onTap: onProfileTap),
         ],
       ),
     );
@@ -529,9 +507,10 @@ class _ServiceabilityCard extends StatelessWidget {
 }
 
 class _CategoryGrid extends ConsumerStatefulWidget {
-  const _CategoryGrid({required this.categoryState});
+  const _CategoryGrid({required this.categoryState, required this.searchQuery});
 
   final CategoryState categoryState;
+  final String searchQuery;
 
   @override
   ConsumerState<_CategoryGrid> createState() => _CategoryGridState();
@@ -552,12 +531,17 @@ class _CategoryGridState extends ConsumerState<_CategoryGrid> {
       return const CategorySkeletonGrid(itemCount: 6);
     }
 
-    final categories = widget.categoryState.items;
+    final query = widget.searchQuery.trim().toLowerCase();
+    final categories = query.isEmpty
+        ? widget.categoryState.items
+        : widget.categoryState.items
+              .where((item) => item.name.toLowerCase().contains(query))
+              .toList(growable: false);
     if (categories.isEmpty) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 16),
         child: Text(
-          'No services available right now',
+          'No matching categories found',
           style: TextStyle(
             color: Color(0xFF4B5563),
             fontSize: 13,
@@ -717,10 +701,14 @@ class _TopHeader extends ConsumerStatefulWidget {
   const _TopHeader({
     this.fallbackLocationLine,
     this.isFetchingCurrentLocation = false,
+    required this.searchController,
+    required this.onSearchChanged,
   });
 
   final String? fallbackLocationLine;
   final bool isFetchingCurrentLocation;
+  final TextEditingController searchController;
+  final ValueChanged<String> onSearchChanged;
 
   @override
   ConsumerState<_TopHeader> createState() => _TopHeaderState();
@@ -736,51 +724,15 @@ class _TopHeaderState extends ConsumerState<_TopHeader> {
   }
 
   Future<void> _onChangeAddressTap() async {
-    final selectedAddress = await showModalBottomSheet<SavedAddress>(
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => AddressSelectionBottomSheet(
-        currentAddressId: ref.read(cartProvider).summary?.address?.id,
-        onAddNewAddress: () async {
-          await Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => SavedAddressesScreen(),
-            ),
-          );
-        },
-      ),
+      builder: (_) => const LocationPickerBottomSheet(),
     );
-
-    if (!mounted || selectedAddress == null) {
-      return;
-    }
-
-    await ref
-        .read(cartProvider.notifier)
-        .updateAddress(addressId: selectedAddress.id);
-
-    if (!mounted) {
-      return;
-    }
-
-    final state = ref.read(cartProvider);
-    if (state.errorMessage == null || state.errorMessage!.isEmpty) {
-      AppToast.success('Address updated successfully');
-    }
-
-    final pincode = selectedAddress.pinCode.replaceAll(RegExp(r'[^0-9]'), '');
-    await ref.read(homeBootstrapProvider.notifier).loadForPincode(
-      pincode: pincode,
-      city: selectedAddress.city,
-      locationLine:
-          '${selectedAddress.address}, ${selectedAddress.city} - ${selectedAddress.pinCode}',
-    );
-    ref.invalidate(bannerProvider(selectedAddress.city.trim()));
-    ref.invalidate(bannerProvider(null));
   }
 
   @override
@@ -792,9 +744,9 @@ class _TopHeaderState extends ConsumerState<_TopHeader> {
     final selectedAddress = cartSummary?.address;
     final bannerCity = selectedAddress?.city.trim().isNotEmpty == true
         ? selectedAddress!.city.trim()
-      : (ref.read(homeBootstrapProvider).city?.trim().isNotEmpty == true
-        ? ref.read(homeBootstrapProvider).city!.trim()
-        : _cityFromLocationLine(widget.fallbackLocationLine));
+        : (ref.read(homeBootstrapProvider).city?.trim().isNotEmpty == true
+              ? ref.read(homeBootstrapProvider).city!.trim()
+              : _cityFromLocationLine(widget.fallbackLocationLine));
     final bannersAsync = ref.watch(bannerProvider(bannerCity));
     final categories = ref.watch(categoryControllerProvider).items;
     final fullNameFuture = ref.read(sessionManagerProvider).fullName;
@@ -802,10 +754,10 @@ class _TopHeaderState extends ConsumerState<_TopHeader> {
     final locationLine = widget.isFetchingCurrentLocation
         ? 'Fetching current location...'
         : ((widget.fallbackLocationLine?.trim().isNotEmpty == true)
-            ? widget.fallbackLocationLine!
-            : (selectedAddress != null
-                ? '${selectedAddress.address}, ${selectedAddress.city} - ${selectedAddress.pinCode}'
-                : 'Select service address'));
+              ? widget.fallbackLocationLine!
+              : (selectedAddress != null
+                    ? '${selectedAddress.address}, ${selectedAddress.city} - ${selectedAddress.pinCode}'
+                    : 'Select service address'));
 
     return bannersAsync.when(
       loading: () => _HomeBannerCarousel(
@@ -817,6 +769,8 @@ class _TopHeaderState extends ConsumerState<_TopHeader> {
         cartCount: cartCount,
         canChangeAddress: !cartState.isMutating,
         onChangeAddressTap: _onChangeAddressTap,
+        searchController: widget.searchController,
+        onSearchChanged: widget.onSearchChanged,
         onCartTap: () {
           ref.read(cartProvider.notifier).loadSummary(forceRefresh: true);
           Navigator.of(context).pushNamed(AppRouter.cart);
@@ -836,6 +790,8 @@ class _TopHeaderState extends ConsumerState<_TopHeader> {
         cartCount: cartCount,
         canChangeAddress: !cartState.isMutating,
         onChangeAddressTap: _onChangeAddressTap,
+        searchController: widget.searchController,
+        onSearchChanged: widget.onSearchChanged,
         onCartTap: () {
           ref.read(cartProvider.notifier).loadSummary(forceRefresh: true);
           Navigator.of(context).pushNamed(AppRouter.cart);
@@ -855,6 +811,8 @@ class _TopHeaderState extends ConsumerState<_TopHeader> {
         cartCount: cartCount,
         canChangeAddress: !cartState.isMutating,
         onChangeAddressTap: _onChangeAddressTap,
+        searchController: widget.searchController,
+        onSearchChanged: widget.onSearchChanged,
         onCartTap: () {
           ref.read(cartProvider.notifier).loadSummary(forceRefresh: true);
           Navigator.of(context).pushNamed(AppRouter.cart);
@@ -878,6 +836,8 @@ class _HomeBannerCarousel extends StatefulWidget {
     required this.locationLine,
     required this.cartCount,
     required this.canChangeAddress,
+    required this.searchController,
+    required this.onSearchChanged,
     required this.onChangeAddressTap,
     required this.onCartTap,
     required this.onProfileTap,
@@ -890,6 +850,8 @@ class _HomeBannerCarousel extends StatefulWidget {
   final String locationLine;
   final int cartCount;
   final bool canChangeAddress;
+  final TextEditingController searchController;
+  final ValueChanged<String> onSearchChanged;
   final VoidCallback onChangeAddressTap;
   final VoidCallback onCartTap;
   final VoidCallback onProfileTap;
@@ -957,7 +919,8 @@ class _HomeBannerCarouselState extends State<_HomeBannerCarousel> {
         : widget.banners[safeIndex];
     final title = currentBanner?.title.trim() ?? '';
     final subtitle = currentBanner?.subtitle.trim() ?? '';
-    final showBannerContent = currentBanner != null &&
+    final showBannerContent =
+        currentBanner != null &&
         (title.isNotEmpty || subtitle.isNotEmpty || currentBanner.isClickable);
 
     return Padding(
@@ -974,62 +937,65 @@ class _HomeBannerCarouselState extends State<_HomeBannerCarousel> {
             fit: StackFit.expand,
             children: [
               PageView.builder(
-            controller: _controller,
-            itemCount: widget.banners.isEmpty ? 1 : widget.banners.length,
-            onPageChanged: (index) {
-              setState(() {
-                _currentIndex = index;
-              });
-            },
-            itemBuilder: (context, index) {
-              final banner =
-                  widget.banners.isEmpty ? null : widget.banners[index];
-              return GestureDetector(
-                onTap: banner == null ? null : () => _onBannerTap(context, banner),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    if (banner == null)
-                      const ColoredBox(color: Color(0xFF19B8E8))
-                    else
-                      Image.network(
-                        banner.mediaUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) {
-                          return const ColoredBox(color: Color(0xFF19B8E8));
-                        },
-                      ),
-                    const DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            Color(0xDD17B7E7),
-                            Color(0x9917B7E7),
-                            Color(0x3317B7E7),
-                          ],
+                controller: _controller,
+                itemCount: widget.banners.isEmpty ? 1 : widget.banners.length,
+                onPageChanged: (index) {
+                  setState(() {
+                    _currentIndex = index;
+                  });
+                },
+                itemBuilder: (context, index) {
+                  final banner = widget.banners.isEmpty
+                      ? null
+                      : widget.banners[index];
+                  return GestureDetector(
+                    onTap: banner == null
+                        ? null
+                        : () => _onBannerTap(context, banner),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        if (banner == null)
+                          const ColoredBox(color: Color(0xFF19B8E8))
+                        else
+                          Image.network(
+                            banner.mediaUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) {
+                              return const ColoredBox(color: Color(0xFF19B8E8));
+                            },
+                          ),
+                        const DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Color(0xDD17B7E7),
+                                Color(0x9917B7E7),
+                                Color(0x3317B7E7),
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                    const DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Color(0x22000000),
-                            Color(0x00000000),
-                            Color(0x44000000),
-                          ],
+                        const DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Color(0x22000000),
+                                Color(0x00000000),
+                                Color(0x44000000),
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
-                ),
-              );
-            },
-          ),
+                  );
+                },
+              ),
               Positioned(
                 left: 16,
                 right: 16,
@@ -1041,10 +1007,9 @@ class _HomeBannerCarouselState extends State<_HomeBannerCarousel> {
                       child: FutureBuilder<String?>(
                         future: widget.fullNameFuture,
                         builder: (context, snapshot) {
-                          final name =
-                              snapshot.data?.trim().isNotEmpty == true
-                                  ? snapshot.data!.trim()
-                                  : 'Parul';
+                          final name = snapshot.data?.trim().isNotEmpty == true
+                              ? snapshot.data!.trim()
+                              : 'Parul';
 
                           return InkWell(
                             onTap: widget.canChangeAddress
@@ -1055,7 +1020,14 @@ class _HomeBannerCarouselState extends State<_HomeBannerCarousel> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Row(
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
+                                    const Icon(
+                                      Icons.location_on_outlined,
+                                      size: 14,
+                                      color: Color(0xFF11314B),
+                                    ),
+                                    const SizedBox(width: 4),
                                     Flexible(
                                       child: Text(
                                         'Hello $name',
@@ -1077,15 +1049,28 @@ class _HomeBannerCarouselState extends State<_HomeBannerCarousel> {
                                   ],
                                 ),
                                 const SizedBox(height: 2),
-                                Text(
-                                  widget.locationLine,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: Color(0xFF11314B),
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w500,
-                                  ),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        widget.locationLine,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: Color(0xFF11314B),
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 2),
+                                    const Icon(
+                                      Icons.keyboard_arrow_down,
+                                      size: 16,
+                                      color: Color(0xFF11314B),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -1117,40 +1102,36 @@ class _HomeBannerCarouselState extends State<_HomeBannerCarousel> {
                     color: const Color(0xEAF7F9FC),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Row(
-                    children: [
-                      const SizedBox(width: 12),
-                      const Icon(
+                  child: TextField(
+                    controller: widget.searchController,
+                    onChanged: widget.onSearchChanged,
+                    decoration: const InputDecoration(
+                      hintText: 'Search services...',
+                      hintStyle: TextStyle(
+                        color: Color(0xFF6B7280),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      prefixIcon: Icon(
                         Icons.search,
                         size: 19,
                         color: Color(0xFF6B7280),
                       ),
-                      const SizedBox(width: 8),
-                      const Expanded(
-                        child: Text(
-                          'Search services...',
-                          style: TextStyle(
-                            color: Color(0xFF6B7280),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                      Container(
-                        margin: const EdgeInsets.only(right: 8),
-                        height: 24,
-                        width: 24,
-                        decoration: const BoxDecoration(
-                          color: Color(0x0011C5BB),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
+                      suffixIcon: Padding(
+                        padding: EdgeInsets.only(right: 8),
+                        child: Icon(
                           Icons.mic,
                           color: Color(0xFF0A2440),
                           size: 15,
                         ),
                       ),
-                    ],
+                      suffixIconConstraints: BoxConstraints(
+                        minWidth: 0,
+                        minHeight: 0,
+                      ),
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(vertical: 16),
+                    ),
                   ),
                 ),
               ),
@@ -1234,25 +1215,25 @@ class _HomeBannerCarouselState extends State<_HomeBannerCarousel> {
                   left: 0,
                   right: 0,
                   bottom: 15,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(widget.banners.length, (index) {
-                  final selected = index == _currentIndex;
-                  return AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    margin: const EdgeInsets.symmetric(horizontal: 3),
-                    width: selected ? 7 : 5,
-                    height: selected ? 7 : 5,
-                    decoration: BoxDecoration(
-                      color: selected
-                          ? Colors.white
-                          : Colors.white.withOpacity(0.62),
-                      shape: BoxShape.circle,
-                    ),
-                  );
-                }),
-              ),
-            ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(widget.banners.length, (index) {
+                      final selected = index == _currentIndex;
+                      return AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        margin: const EdgeInsets.symmetric(horizontal: 3),
+                        width: selected ? 7 : 5,
+                        height: selected ? 7 : 5,
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? Colors.white
+                              : Colors.white.withOpacity(0.62),
+                          shape: BoxShape.circle,
+                        ),
+                      );
+                    }),
+                  ),
+                ),
             ],
           ),
         ),
@@ -1344,4 +1325,227 @@ class _MostBookedData {
   final String imageUrl;
 }
 
+class _CategorySearchSheet extends StatefulWidget {
+  const _CategorySearchSheet({
+    required this.categories,
+    required this.onCategoryTap,
+  });
 
+  final List<CategoryModal> categories;
+  final ValueChanged<CategoryModal> onCategoryTap;
+
+  @override
+  State<_CategorySearchSheet> createState() => _CategorySearchSheetState();
+}
+
+class _CategorySearchSheetState extends State<_CategorySearchSheet> {
+  final TextEditingController _controller = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  List<CategoryModal> get _filteredCategories {
+    final query = _query.trim().toLowerCase();
+    if (query.isEmpty) {
+      return widget.categories;
+    }
+
+    return widget.categories
+        .where((category) {
+          return category.name.toLowerCase().contains(query);
+        })
+        .toList(growable: false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final categories = _filteredCategories;
+
+    return FractionallySizedBox(
+      heightFactor: 0.9,
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+        ),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 10, 16, 16 + bottomInset),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 42,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE5E7EB),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Search categories',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF111827),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _controller,
+                onChanged: (value) => setState(() => _query = value),
+                decoration: InputDecoration(
+                  hintText: 'Search by category name',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _query.isEmpty
+                      ? null
+                      : IconButton(
+                          onPressed: () {
+                            _controller.clear();
+                            setState(() => _query = '');
+                          },
+                          icon: const Icon(Icons.clear),
+                        ),
+                  filled: true,
+                  fillColor: const Color(0xFFF8FAFC),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: Color(0xFF0B2A4A)),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                '${categories.length} result${categories.length == 1 ? '' : 's'}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF6B7280),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: categories.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'No matching categories found',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF6B7280),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      )
+                    : ListView.separated(
+                        itemCount: categories.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final category = categories[index];
+                          return InkWell(
+                            borderRadius: BorderRadius.circular(14),
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              widget.onCategoryTap(category);
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF8FAFC),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: const Color(0xFFE5E7EB),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: Container(
+                                      width: 52,
+                                      height: 52,
+                                      color: const Color(0xFFE5E7EB),
+                                      child: category.imageUrl.isNotEmpty
+                                          ? Image.network(
+                                              category.imageUrl,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (_, __, ___) =>
+                                                  const Icon(
+                                                    Icons.category_outlined,
+                                                    color: Color(0xFF64748B),
+                                                  ),
+                                            )
+                                          : const Icon(
+                                              Icons.category_outlined,
+                                              color: Color(0xFF64748B),
+                                            ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          category.name,
+                                          style: const TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFF111827),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'Tap to view services',
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            color: Color(0xFF6B7280),
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const Icon(
+                                    Icons.chevron_right,
+                                    color: Color(0xFF94A3B8),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

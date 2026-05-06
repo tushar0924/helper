@@ -151,6 +151,24 @@ class CartRepository {
     );
   }
 
+  Future<void> cancelBookingRequest({required int bookingRequestId}) async {
+    await _apiClient.postJson(
+      BookingRequestApiEndpoint.cancel(bookingRequestId),
+      requiresAuth: true,
+      showSuccessToast: false,
+    );
+  }
+
+  Future<Map<String, dynamic>> retryBookingRequest({
+    required int bookingRequestId,
+  }) async {
+    return _apiClient.postJson(
+      BookingRequestApiEndpoint.retry(bookingRequestId),
+      requiresAuth: true,
+      showSuccessToast: false,
+    );
+  }
+
   Future<BookingDetailsModal> getPartnerBooking({
     required int bookingId,
   }) async {

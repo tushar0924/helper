@@ -765,6 +765,128 @@ class _BookingConfirmedScreenState
     }
   }
 
+  Future<void> _handleBackPressed() async {
+    if (_paymentCompleted || _isConfirmingPayment) {
+      return;
+    }
+
+    final shouldCancel = await _showCancelConfirmationDialog();
+    if (!shouldCancel || !mounted) {
+      return;
+    }
+
+    await _cancelBookingRequestBeforePayment();
+  }
+
+  Future<bool> _showCancelConfirmationDialog() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) => Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Are you sure you want to cancel the booking?',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF111827),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(true),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF0B1F3A),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: const Text(
+                        'Yes',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(false),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Color(0xFFD1D5DB)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: const Text(
+                        'No',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF111827),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    return confirmed == true;
+  }
+
+  Future<void> _cancelBookingRequestBeforePayment() async {
+    final bookingRequestId = _resolveBookingRequestIdForCancellation();
+    if (bookingRequestId == null) {
+      AppToast.error('Booking request is not available to cancel');
+      return;
+    }
+
+    try {
+      final repository = ref.read(cartRepositoryProvider);
+      await repository.cancelBookingRequest(bookingRequestId: bookingRequestId);
+
+      if (!mounted) return;
+
+      AppToast.success('Booking cancelled successfully');
+      await Future<void>.delayed(const Duration(seconds: 1));
+
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    } catch (error) {
+      if (!mounted) return;
+      AppToast.error(error.toString());
+    }
+  }
+
+  int? _resolveBookingRequestIdForCancellation() {
+    final bookingRequestId = widget.bookingDetails?.bookingRequestId;
+    final parsedBookingRequestId = int.tryParse(bookingRequestId ?? '');
+    if (parsedBookingRequestId != null && parsedBookingRequestId > 0) {
+      return parsedBookingRequestId;
+    }
+
+    return widget.bookingId > 0 ? widget.bookingId : null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final summary = widget.summary;
@@ -772,139 +894,153 @@ class _BookingConfirmedScreenState
     final services = summary.items;
     final statusLabel = bookingDetails?.statusLabel ?? 'Partner Assigned';
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF1F3F6),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: _paymentCompleted || _isConfirmingPayment
-            ? null
-            : IconButton(
-                onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(
-                  Icons.arrow_back,
-                  size: 24,
-                  color: Color(0xFF0F172A),
+    return WillPopScope(
+      onWillPop: () async {
+        if (_paymentCompleted || _isConfirmingPayment) {
+          return true;
+        }
+
+        await _handleBackPressed();
+        return false;
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF1F3F6),
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          leading: _paymentCompleted || _isConfirmingPayment
+              ? null
+              : IconButton(
+                  onPressed: _handleBackPressed,
+                  icon: const Icon(
+                    Icons.arrow_back,
+                    size: 24,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+          titleSpacing: 0,
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _isConfirmingPayment
+                    ? 'Confirming Payment'
+                    : _paymentCompleted
+                    ? 'Booking Scheduled'
+                    : 'Booking Confirmed',
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF111827),
                 ),
               ),
-        titleSpacing: 0,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _isConfirmingPayment
-                  ? 'Confirming Payment'
-                  : _paymentCompleted
-                  ? 'Booking Scheduled'
-                  : 'Booking Confirmed',
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF111827),
+              SizedBox(height: 2),
+              Text(
+                _isConfirmingPayment
+                    ? 'Please wait while we confirm your payment'
+                    : _paymentCompleted
+                    ? 'Your booking is confirmed'
+                    : bookingDetails != null
+                    ? 'Booking #${bookingDetails.id} • $statusLabel'
+                    : 'A partner has been assigned to your service',
+                style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
               ),
-            ),
-            SizedBox(height: 2),
-            Text(
-              _isConfirmingPayment
-                  ? 'Please wait while we confirm your payment'
-                  : _paymentCompleted
-                  ? 'Your booking is confirmed'
-                  : bookingDetails != null
-                  ? 'Booking #${bookingDetails.id} • $statusLabel'
-                  : 'A partner has been assigned to your service',
-              style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(13, 13, 13, 15),
-        child: Column(
-          children: [
-            if (_isConfirmingPayment)
-              _ConfirmingPaymentCard()
-            else if (_paymentCompleted)
-              const _PaymentSuccessCard()
-            else
-              _AssignedInfoCard(bookingDetails: bookingDetails),
-            const SizedBox(height: 10),
-            _PartnerCard(
-              bookingDetails: bookingDetails,
-              fallbackPartnerDetails: widget.partnerDetails,
-            ),
-            const SizedBox(height: 10),
-            _ImportantInstructionsCard(bookingDetails: bookingDetails),
-            const SizedBox(height: 10),
-            _BookingDetailsCard(
-              summary: summary,
-              bookingDetails: bookingDetails,
-            ),
-            const SizedBox(height: 10),
-            _ServiceDetailsCard(
-              summary: summary,
-              services: services,
-              bookingDetails: bookingDetails,
-            ),
-            const SizedBox(height: 10),
-            _AddressCard(summary: summary, bookingDetails: bookingDetails),
-            const SizedBox(height: 10),
-            if (!_paymentCompleted && !_isConfirmingPayment) _ApplyCouponRow(),
-            if (!_paymentCompleted && !_isConfirmingPayment) const SizedBox(height: 10),
-            if (!_paymentCompleted && !_isConfirmingPayment) _BillCard(summary: summary),
-            if (!_paymentCompleted && !_isConfirmingPayment) const SizedBox(height: 10),
-            if (!_paymentCompleted && !_isConfirmingPayment)
-              _PendingPaymentCard(
-                total: summary.pricing.total,
-                paymentExpiresAt: bookingDetails?.paymentExpiresAt,
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(13, 13, 13, 15),
+          child: Column(
+            children: [
+              if (_isConfirmingPayment)
+                _ConfirmingPaymentCard()
+              else if (_paymentCompleted)
+                const _PaymentSuccessCard()
+              else
+                _AssignedInfoCard(bookingDetails: bookingDetails),
+              const SizedBox(height: 10),
+              _PartnerCard(
+                bookingDetails: bookingDetails,
+                fallbackPartnerDetails: widget.partnerDetails,
               ),
-            if (_paymentCompleted) _CancellationPolicyCard(),
-          ],
+              const SizedBox(height: 10),
+              _ImportantInstructionsCard(bookingDetails: bookingDetails),
+              const SizedBox(height: 10),
+              _BookingDetailsCard(
+                summary: summary,
+                bookingDetails: bookingDetails,
+              ),
+              const SizedBox(height: 10),
+              _ServiceDetailsCard(
+                summary: summary,
+                services: services,
+                bookingDetails: bookingDetails,
+              ),
+              const SizedBox(height: 10),
+              _AddressCard(summary: summary, bookingDetails: bookingDetails),
+              const SizedBox(height: 10),
+              if (!_paymentCompleted && !_isConfirmingPayment)
+                _ApplyCouponRow(),
+              if (!_paymentCompleted && !_isConfirmingPayment)
+                const SizedBox(height: 10),
+              if (!_paymentCompleted && !_isConfirmingPayment)
+                _BillCard(summary: summary),
+              if (!_paymentCompleted && !_isConfirmingPayment)
+                const SizedBox(height: 10),
+              if (!_paymentCompleted && !_isConfirmingPayment)
+                _PendingPaymentCard(
+                  total: summary.pricing.total,
+                  paymentExpiresAt: bookingDetails?.paymentExpiresAt,
+                ),
+              if (_paymentCompleted) _CancellationPolicyCard(),
+            ],
+          ),
         ),
-      ),
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(13, 0, 13, 13),
-        child: SizedBox(
-          height: 58,
-          child: FilledButton.icon(
-            onPressed: _isPaying || _isConfirmingPayment
-                ? null
-                : (_paymentCompleted ? _onCancelBookingTap : _onPayNowTap),
-            style: FilledButton.styleFrom(
-              backgroundColor: _paymentCompleted
-                  ? const Color(0xFFDC2626)
-                  : const Color(0xFF0B1F3A),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+        bottomNavigationBar: SafeArea(
+          minimum: const EdgeInsets.fromLTRB(13, 0, 13, 13),
+          child: SizedBox(
+            height: 58,
+            child: FilledButton.icon(
+              onPressed: _isPaying || _isConfirmingPayment
+                  ? null
+                  : (_paymentCompleted ? _onCancelBookingTap : _onPayNowTap),
+              style: FilledButton.styleFrom(
+                backgroundColor: _paymentCompleted
+                    ? const Color(0xFFDC2626)
+                    : const Color(0xFF0B1F3A),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
-            ),
-            icon: _paymentCompleted
-                ? const Icon(Icons.close, size: 19, color: Colors.white)
-                : (_isPaying || _isConfirmingPayment
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Colors.white,
+              icon: _paymentCompleted
+                  ? const Icon(Icons.close, size: 19, color: Colors.white)
+                  : (_isPaying || _isConfirmingPayment
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
                             ),
-                          ),
-                        )
-                      : const Icon(
-                          Icons.credit_card,
-                          size: 19,
-                          color: Colors.white,
-                        )),
-            label: Text(
-              _paymentCompleted
-                  ? 'Cancel Booking'
-                  : _isPaying || _isConfirmingPayment
-                  ? 'Processing...'
-                  : 'Pay Now ${formatInr(summary.pricing.total)}',
-              style: const TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
+                          )
+                        : const Icon(
+                            Icons.credit_card,
+                            size: 19,
+                            color: Colors.white,
+                          )),
+              label: Text(
+                _paymentCompleted
+                    ? 'Cancel Booking'
+                    : _isPaying || _isConfirmingPayment
+                    ? 'Processing...'
+                    : 'Pay Now ${formatInr(summary.pricing.total)}',
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
               ),
             ),
           ),

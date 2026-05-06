@@ -1,9 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../auth/application/auth_provider.dart';
 import '../../../session/session_manager.dart';
+import '../data/address_models.dart';
 import '../data/home_bootstrap_repository.dart';
 import '../data/google_maps_service.dart';
 
@@ -12,6 +15,8 @@ class HomeBootstrapState {
     this.isLoading = false,
     this.hasLoaded = false,
     this.showComingSoon = false,
+    this.selectedLocationLabel,
+    this.selectedLocationSource,
     this.locationLine,
     this.city,
     this.pincode,
@@ -21,6 +26,8 @@ class HomeBootstrapState {
   final bool isLoading;
   final bool hasLoaded;
   final bool showComingSoon;
+  final String? selectedLocationLabel;
+  final SelectedLocationSource? selectedLocationSource;
   final String? locationLine;
   final String? city;
   final String? pincode;
@@ -30,6 +37,8 @@ class HomeBootstrapState {
     bool? isLoading,
     bool? hasLoaded,
     bool? showComingSoon,
+    String? selectedLocationLabel,
+    SelectedLocationSource? selectedLocationSource,
     String? locationLine,
     String? city,
     String? pincode,
@@ -40,6 +49,10 @@ class HomeBootstrapState {
       isLoading: isLoading ?? this.isLoading,
       hasLoaded: hasLoaded ?? this.hasLoaded,
       showComingSoon: showComingSoon ?? this.showComingSoon,
+        selectedLocationLabel:
+          selectedLocationLabel ?? this.selectedLocationLabel,
+        selectedLocationSource:
+          selectedLocationSource ?? this.selectedLocationSource,
       locationLine: locationLine ?? this.locationLine,
       city: city ?? this.city,
       pincode: pincode ?? this.pincode,
@@ -104,9 +117,22 @@ class HomeBootstrapController extends StateNotifier<HomeBootstrapState> {
       final response = await _repository.getHomeByPincode(pincode);
       final showComingSoon = _extractComingSoon(response);
       await _sessionManager.setLocationComingSoon(showComingSoon);
+      await _persistSelectedLocation(
+        SelectedLocationSnapshot(
+          source: SelectedLocationSource.currentLocation,
+          locationLine: locationLine,
+          city: city,
+          pinCode: pincode,
+          latitude: position.latitude,
+          longitude: position.longitude,
+          label: 'Current location',
+        ),
+      );
       state = state.copyWith(
         isLoading: false,
         hasLoaded: true,
+        selectedLocationLabel: 'Current location',
+        selectedLocationSource: SelectedLocationSource.currentLocation,
         locationLine: locationLine,
         city: city,
         pincode: pincode,
@@ -158,6 +184,89 @@ class HomeBootstrapController extends StateNotifier<HomeBootstrapState> {
     }
   }
 
+  Future<void> loadInitialLocation() async {
+    if (state.isLoading) {
+      return;
+    }
+
+    final selected = await _loadSelectedLocation();
+    if (selected == null ||
+        selected.source == SelectedLocationSource.currentLocation) {
+      await loadForCurrentLocation();
+      return;
+    }
+
+    await applySelectedLocation(selected);
+  }
+
+  Future<void> applyCurrentLocation() async {
+    await loadForCurrentLocation();
+  }
+
+  Future<void> applySavedAddress(SavedAddress address) async {
+    final draft = address.toDraft();
+    final locationLine = _buildLocationLine(
+      formattedAddress: draft.formattedAddress,
+      city: draft.city,
+      pincode: draft.pinCode,
+    );
+
+    await _persistSelectedLocation(
+      SelectedLocationSnapshot(
+        source: SelectedLocationSource.savedAddress,
+        locationLine: locationLine,
+        city: draft.city,
+        pinCode: draft.pinCode,
+        latitude: draft.latitude,
+        longitude: draft.longitude,
+        label: draft.label,
+        addressId: address.id,
+      ),
+    );
+
+    await loadForPincode(
+      pincode: draft.pinCode,
+      city: draft.city,
+      locationLine: locationLine,
+    );
+
+    state = state.copyWith(
+      selectedLocationLabel: draft.label,
+      selectedLocationSource: SelectedLocationSource.savedAddress,
+    );
+  }
+
+  Future<void> applyManualDraft(AddressDraft draft) async {
+    final locationLine = _buildLocationLine(
+      formattedAddress: draft.formattedAddress,
+      city: draft.city,
+      pincode: draft.pinCode,
+    );
+
+    await _persistSelectedLocation(
+      SelectedLocationSnapshot(
+        source: SelectedLocationSource.manualSearch,
+        locationLine: locationLine,
+        city: draft.city,
+        pinCode: draft.pinCode,
+        latitude: draft.latitude,
+        longitude: draft.longitude,
+        label: draft.label,
+      ),
+    );
+
+    await loadForPincode(
+      pincode: draft.pinCode,
+      city: draft.city,
+      locationLine: locationLine,
+    );
+
+    state = state.copyWith(
+      selectedLocationLabel: draft.label,
+      selectedLocationSource: SelectedLocationSource.manualSearch,
+    );
+  }
+
   Future<LatLng> _fetchCurrentLatLng() async {
     final enabled = await Geolocator.isLocationServiceEnabled();
     if (!enabled) {
@@ -179,6 +288,55 @@ class HomeBootstrapController extends StateNotifier<HomeBootstrapState> {
     );
 
     return LatLng(position.latitude, position.longitude);
+  }
+
+  Future<void> applySelectedLocation(SelectedLocationSnapshot selected) async {
+    final pincode = selected.pinCode.trim();
+    if (pincode.isEmpty) {
+      await loadForCurrentLocation();
+      return;
+    }
+
+    await _persistSelectedLocation(selected);
+    await loadForPincode(
+      pincode: pincode,
+      city: selected.city,
+      locationLine: selected.locationLine,
+    );
+
+    state = state.copyWith(
+      selectedLocationLabel: selected.label,
+      selectedLocationSource: selected.source,
+      locationLine: selected.locationLine,
+      city: selected.city,
+      pincode: selected.pinCode,
+    );
+  }
+
+  Future<SelectedLocationSnapshot?> _loadSelectedLocation() async {
+    final raw = await _sessionManager.selectedLocationJson;
+    if (raw == null || raw.trim().isEmpty) {
+      return null;
+    }
+
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        return SelectedLocationSnapshot.fromJson(decoded);
+      }
+    } catch (_) {
+      return null;
+    }
+
+    return null;
+  }
+
+  Future<void> _persistSelectedLocation(
+    SelectedLocationSnapshot selected,
+  ) async {
+    await _sessionManager.saveSelectedLocationJson(
+      jsonEncode(selected.toJson()),
+    );
   }
 
   String _buildLocationLine({

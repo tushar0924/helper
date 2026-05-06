@@ -25,6 +25,7 @@ class _AddressLocationPickerScreenState
   static const LatLng _fallbackLocation = LatLng(26.9124, 75.7873);
 
   final GoogleMapsService _mapsService = GoogleMapsService();
+  final TextEditingController _searchController = TextEditingController();
 
   GoogleMapController? _mapController;
   late AddressDraft _draft;
@@ -35,6 +36,10 @@ class _AddressLocationPickerScreenState
   bool? _isServiceAvailable;
   String? _serviceabilityPincode;
   bool _showMyLocation = false;
+  bool _isSearching = false;
+  bool _searchLoading = false;
+  List<PlaceSuggestion> _searchSuggestions = const <PlaceSuggestion>[];
+  Timer? _searchDebounce;
 
   @override
   void initState() {
@@ -59,6 +64,8 @@ class _AddressLocationPickerScreenState
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
+    _searchController.dispose();
     _mapController?.dispose();
     super.dispose();
   }
@@ -200,32 +207,97 @@ class _AddressLocationPickerScreenState
     }
   }
 
-  Future<void> _openSearchSheet() async {
-    final selected = await showModalBottomSheet<AddressDraft>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _LocationSearchSheet(service: _mapsService),
-    );
+  void _confirmSelection() {
+    Navigator.of(context).pop(_draft);
+  }
 
-    if (selected == null || !mounted) {
+  Future<void> _searchLocations(String value) async {
+    final query = value.trim();
+    if (query.length < 2) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _searchSuggestions = const <PlaceSuggestion>[];
+        _searchLoading = false;
+      });
+      return;
+    }
+
+    if (!mounted) {
       return;
     }
 
     setState(() {
-      _draft = selected;
-      _selectedPosition = LatLng(selected.latitude, selected.longitude);
+      _searchLoading = true;
     });
-    unawaited(_checkServiceability(selected));
 
-    final position = LatLng(selected.latitude, selected.longitude);
-    if (_mapController != null) {
-      await _mapController!.animateCamera(CameraUpdate.newLatLng(position));
+    try {
+      final suggestions = await _mapsService.autocomplete(query);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _searchSuggestions = suggestions;
+        _searchLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _searchSuggestions = const <PlaceSuggestion>[];
+        _searchLoading = false;
+      });
+      AppToast.error(error.toString());
     }
   }
 
-  void _confirmSelection() {
-    Navigator.of(context).pop(_draft);
+  void _onSearchChanged(String value) {
+    _searchDebounce?.cancel();
+    setState(() {
+      _isSearching = value.trim().isNotEmpty;
+    });
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+      _searchLocations(value);
+    });
+  }
+
+  Future<void> _selectSearchSuggestion(PlaceSuggestion suggestion) async {
+    try {
+      final selected = await _mapsService.placeDetails(suggestion.placeId);
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _draft = selected;
+        _selectedPosition = LatLng(selected.latitude, selected.longitude);
+        _searchController.text = suggestion.description;
+        _searchSuggestions = const <PlaceSuggestion>[];
+        _isSearching = false;
+      });
+      unawaited(_checkServiceability(selected));
+
+      final position = LatLng(selected.latitude, selected.longitude);
+      if (_mapController != null) {
+        await _mapController!.animateCamera(CameraUpdate.newLatLng(position));
+      }
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      AppToast.error(error.toString());
+    }
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    setState(() {
+      _searchSuggestions = const <PlaceSuggestion>[];
+      _isSearching = false;
+      _searchLoading = false;
+    });
   }
 
   @override
@@ -269,7 +341,7 @@ class _AddressLocationPickerScreenState
                 _selectedPosition = position.target;
               },
               onCameraIdle: () => _setSelectedPosition(_selectedPosition),
-              onTap: (position) => _setSelectedPosition(position),
+              onTap: (LatLng position) => _setSelectedPosition(position),
             ),
           ),
           const Center(
@@ -290,38 +362,107 @@ class _AddressLocationPickerScreenState
             right: 12,
             child: SafeArea(
               bottom: false,
-              child: GestureDetector(
-                onTap: _openSearchSheet,
-                child: Container(
-                  height: 48,
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.12),
-                        blurRadius: 20,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.search, color: Color(0xFF94A3B8)),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Search for new area or locality...',
-                          style: TextStyle(
-                            color: Color(0xFF94A3B8),
-                            fontSize: 14,
-                          ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.12),
+                          blurRadius: 20,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: _onSearchChanged,
+                      decoration: InputDecoration(
+                        hintText: 'Search for new area or locality...',
+                        hintStyle: const TextStyle(
+                          color: Color(0xFF94A3B8),
+                          fontSize: 14,
+                        ),
+                        prefixIcon: const Icon(
+                          Icons.search,
+                          color: Color(0xFF94A3B8),
+                        ),
+                        suffixIcon: _searchController.text.trim().isEmpty
+                            ? null
+                            : IconButton(
+                                icon: const Icon(Icons.close),
+                                onPressed: _clearSearch,
+                              ),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 14,
                         ),
                       ),
-                    ],
+                    ),
                   ),
-                ),
+                  if (_isSearching ||
+                      _searchLoading ||
+                      _searchSuggestions.isNotEmpty)
+                    Container(
+                      margin: const EdgeInsets.only(top: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.12),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      constraints: const BoxConstraints(maxHeight: 320),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_searchLoading)
+                            const LinearProgressIndicator(minHeight: 2),
+                          if (_searchSuggestions.isEmpty && !_searchLoading)
+                            const Padding(
+                              padding: EdgeInsets.all(16),
+                              child: Text(
+                                'Type to search an address in Google Maps',
+                                style: TextStyle(color: Color(0xFF6B7280)),
+                              ),
+                            )
+                          else
+                            Flexible(
+                              child: ListView.separated(
+                                shrinkWrap: true,
+                                itemCount: _searchSuggestions.length,
+                                separatorBuilder: (_, __) =>
+                                    const Divider(height: 1),
+                                itemBuilder: (context, index) {
+                                  final suggestion = _searchSuggestions[index];
+                                  return ListTile(
+                                    leading: const Icon(
+                                      Icons.place,
+                                      color: Color(0xFF16A34A),
+                                    ),
+                                    title: Text(
+                                      suggestion.description,
+                                      style: const TextStyle(fontSize: 14),
+                                    ),
+                                    onTap: () =>
+                                        _selectSearchSuggestion(suggestion),
+                                  );
+                                },
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
@@ -491,20 +632,20 @@ class _ServiceabilityBanner extends StatelessWidget {
     final color = available
         ? const Color(0xFF86F5B2)
         : unavailable
-            ? const Color(0xFFFFCDD2)
-            : const Color(0xFFE5E7EB);
+        ? const Color(0xFFFFCDD2)
+        : const Color(0xFFE5E7EB);
     final textColor = available
         ? const Color(0xFF065F46)
         : unavailable
-            ? const Color(0xFFB91C1C)
-            : const Color(0xFF475569);
+        ? const Color(0xFFB91C1C)
+        : const Color(0xFF475569);
     final text = isChecking
         ? 'Checking service availability...'
         : available
-            ? 'Service is available in this area'
-            : unavailable
-                ? 'Service is not available in this area'
-                : 'Select a location to check service availability';
+        ? 'Service is available in this area'
+        : unavailable
+        ? 'Service is not available in this area'
+        : 'Select a location to check service availability';
 
     return Container(
       width: double.infinity,
@@ -551,14 +692,16 @@ bool _extractComingSoon(Map<String, dynamic> response) {
   final data = response['data'];
   final source = data is Map<String, dynamic> ? data : response;
 
-  final comingSoon = _asBool(source['comingSoon']) ??
+  final comingSoon =
+      _asBool(source['comingSoon']) ??
       _asBool(source['isComingSoon']) ??
       _asBool(source['showComingSoon']);
   if (comingSoon != null) {
     return comingSoon;
   }
 
-  final serviceable = _asBool(source['serviceable']) ??
+  final serviceable =
+      _asBool(source['serviceable']) ??
       _asBool(source['isServiceable']) ??
       _asBool(source['isAvailable']);
   if (serviceable != null) {
@@ -590,180 +733,4 @@ bool? _asBool(Object? value) {
   }
 
   return null;
-}
-
-class _LocationSearchSheet extends StatefulWidget {
-  const _LocationSearchSheet({required this.service});
-
-  final GoogleMapsService service;
-
-  @override
-  State<_LocationSearchSheet> createState() => _LocationSearchSheetState();
-}
-
-class _LocationSearchSheetState extends State<_LocationSearchSheet> {
-  final TextEditingController _controller = TextEditingController();
-  Timer? _debounce;
-  List<PlaceSuggestion> _suggestions = const <PlaceSuggestion>[];
-  bool _loading = false;
-
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    _controller.dispose();
-    super.dispose();
-  }
-
-  Future<void> _search(String value) async {
-    final query = value.trim();
-    if (query.length < 2) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _suggestions = const <PlaceSuggestion>[];
-        _loading = false;
-      });
-      return;
-    }
-
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      _loading = true;
-    });
-
-    try {
-      final suggestions = await widget.service.autocomplete(query);
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _suggestions = suggestions;
-        _loading = false;
-      });
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _suggestions = const <PlaceSuggestion>[];
-        _loading = false;
-      });
-      AppToast.error(error.toString());
-    }
-  }
-
-  Future<void> _onChanged(String value) async {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 300), () {
-      _search(value);
-    });
-  }
-
-  Future<void> _selectSuggestion(PlaceSuggestion suggestion) async {
-    try {
-      final draft = await widget.service.placeDetails(suggestion.placeId);
-      if (!mounted) {
-        return;
-      }
-      Navigator.of(context).pop(draft);
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      AppToast.error(error.toString());
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.only(bottom: bottomInset),
-        child: Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 10),
-              Container(
-                width: 44,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFD1D5DB),
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                child: TextField(
-                  controller: _controller,
-                  onChanged: _onChanged,
-                  decoration: InputDecoration(
-                    hintText: 'Search for new area or locality...',
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () {
-                        _controller.clear();
-                        setState(() {
-                          _suggestions = const <PlaceSuggestion>[];
-                        });
-                      },
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              if (_loading) const LinearProgressIndicator(minHeight: 2),
-              SizedBox(
-                height: 360,
-                child: _suggestions.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'Type to search an address in Google Maps',
-                          style: TextStyle(color: Color(0xFF6B7280)),
-                        ),
-                      )
-                    : ListView.separated(
-                        itemCount: _suggestions.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          final suggestion = _suggestions[index];
-                          return ListTile(
-                            leading: const Icon(
-                              Icons.place,
-                              color: Color(0xFF16A34A),
-                            ),
-                            title: Text(
-                              suggestion.description,
-                              style: const TextStyle(fontSize: 14),
-                            ),
-                            onTap: () => _selectSuggestion(suggestion),
-                          );
-                        },
-                      ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }

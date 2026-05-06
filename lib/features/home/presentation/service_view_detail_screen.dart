@@ -74,7 +74,7 @@ class _ServiceDetailContentState extends State<_ServiceDetailContent> {
     final details = widget.details;
 
     return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
+      physics: const ClampingScrollPhysics(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -220,7 +220,8 @@ class _ServiceDetailContentState extends State<_ServiceDetailContent> {
           if (details.notIncluded.isNotEmpty)
             _DetailSectionCard(
               title: "What's Not Included",
-              backgroundColor: const Color(0xFFFEF2F2),
+              backgroundColor: Colors.white,
+              innerBoxColor: const Color(0xFFFEF2F2),
               iconColor: const Color(0xFFEF4444),
               icon: Icons.cancel,
               items: details.notIncluded,
@@ -231,16 +232,16 @@ class _ServiceDetailContentState extends State<_ServiceDetailContent> {
           if (details.requirements.isNotEmpty)
             _DetailSectionCard(
               title: 'What We Need From You',
-              backgroundColor: Colors.white,
-              iconColor: const Color(0xFF38BDF8),
+              backgroundColor: const Color(0xFFF0F9FF),
+              iconColor: const Color(0xFF0284C7),
               icon: Icons.water_drop,
               items: details.requirements,
               useAdaptiveIcons: true,
               titleFontSize: 18,
               itemFontSize: 13,
-              containerPadding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+              containerPadding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
               elevated: false,
-              plainSection: true,
+              plainSection: false,
             ),
           if (details.faqs.isNotEmpty) ...[
             const Padding(
@@ -294,7 +295,7 @@ class _ServiceDetailLoadingState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
+      physics: const ClampingScrollPhysics(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -715,11 +716,12 @@ class _DetailSectionCard extends StatelessWidget {
     required this.icon,
     required this.items,
     this.useAdaptiveIcons = false,
-    this.titleFontSize = 16,
-    this.itemFontSize = 12,
-    this.containerPadding = const EdgeInsets.fromLTRB(14, 14, 14, 6),
+    this.titleFontSize = 17,
+    this.itemFontSize = 13,
+    this.containerPadding = const EdgeInsets.fromLTRB(16, 16, 16, 16),
     this.elevated = false,
     this.plainSection = false,
+    this.innerBoxColor,
   });
 
   final String title;
@@ -733,6 +735,7 @@ class _DetailSectionCard extends StatelessWidget {
   final EdgeInsetsGeometry containerPadding;
   final bool elevated;
   final bool plainSection;
+  final Color? innerBoxColor;
 
   @override
   Widget build(BuildContext context) {
@@ -783,6 +786,71 @@ class _DetailSectionCard extends StatelessWidget {
       );
     }
 
+    // If an innerBoxColor is provided, render the whole section as a white
+    // outer card with the title on the white background and the colored
+    // inner box below it (used for "What's Not Included").
+    if (innerBoxColor != null) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(0, 0, 0, 10),
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontSize: titleFontSize,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF0F172A),
+                ),
+              ),
+            ),
+            Container(
+              width: double.infinity,
+              padding: containerPadding,
+              decoration: BoxDecoration(
+                color: innerBoxColor,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ...items.map(
+                    (item) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            useAdaptiveIcons ? _adaptiveIconFor(item, icon) : icon,
+                            size: 16,
+                            color: iconColor,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              item,
+                              style: TextStyle(
+                                fontSize: itemFontSize,
+                                height: 1.6,
+                                fontWeight: FontWeight.w500,
+                                color: const Color(0xFF334155),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
       child: Column(
@@ -802,7 +870,7 @@ class _DetailSectionCard extends StatelessWidget {
             padding: containerPadding,
             decoration: BoxDecoration(
               color: backgroundColor,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(18),
               boxShadow: elevated
                   ? [
                       BoxShadow(
@@ -812,9 +880,7 @@ class _DetailSectionCard extends StatelessWidget {
                       ),
                     ]
                   : null,
-              border: elevated
-                  ? Border.all(color: const Color(0xFFE8EEF5))
-                  : null,
+              border: elevated ? Border.all(color: const Color(0xFFE8EEF5)) : null,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -826,9 +892,7 @@ class _DetailSectionCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Icon(
-                          useAdaptiveIcons
-                              ? _adaptiveIconFor(item, icon)
-                              : icon,
+                          useAdaptiveIcons ? _adaptiveIconFor(item, icon) : icon,
                           size: 16,
                           color: iconColor,
                         ),

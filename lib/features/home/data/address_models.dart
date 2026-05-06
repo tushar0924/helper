@@ -1,3 +1,63 @@
+enum SelectedLocationSource {
+  currentLocation,
+  savedAddress,
+  manualSearch,
+}
+
+class SelectedLocationSnapshot {
+  const SelectedLocationSnapshot({
+    required this.source,
+    required this.locationLine,
+    required this.city,
+    required this.pinCode,
+    required this.latitude,
+    required this.longitude,
+    this.label,
+    this.addressId,
+  });
+
+  final SelectedLocationSource source;
+  final String locationLine;
+  final String city;
+  final String pinCode;
+  final double latitude;
+  final double longitude;
+  final String? label;
+  final int? addressId;
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'source': source.name,
+      'locationLine': locationLine,
+      'city': city,
+      'pinCode': pinCode,
+      'latitude': latitude,
+      'longitude': longitude,
+      'label': label,
+      'addressId': addressId,
+    };
+  }
+
+  factory SelectedLocationSnapshot.fromJson(Map<String, dynamic> json) {
+    final sourceText = json['source']?.toString() ?? '';
+    return SelectedLocationSnapshot(
+      source: SelectedLocationSource.values.firstWhere(
+        (item) => item.name == sourceText,
+        orElse: () => SelectedLocationSource.currentLocation,
+      ),
+      locationLine: json['locationLine']?.toString() ?? '',
+      city: json['city']?.toString() ?? '',
+      pinCode: json['pinCode']?.toString() ?? '',
+      latitude: _parseDouble(json['latitude']),
+      longitude: _parseDouble(json['longitude']),
+      label: json['label']?.toString(),
+      addressId: json['addressId'] == null
+          ? null
+          : int.tryParse(json['addressId'].toString()),
+    );
+  }
+}
+
 class PlaceSuggestion {
   const PlaceSuggestion({required this.placeId, required this.description});
 

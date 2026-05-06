@@ -3,6 +3,8 @@ class AuthUser {
     required this.id,
     required this.phone,
     required this.fullName,
+    required this.email,
+    required this.gender,
     required this.role,
     required this.isActive,
   });
@@ -11,12 +13,16 @@ class AuthUser {
     : id = 0,
       phone = '',
       fullName = '',
+      email = '',
+      gender = '',
       role = '',
       isActive = false;
 
   final int id;
   final String phone;
   final String fullName;
+  final String email;
+  final String gender;
   final String role;
   final bool isActive;
 
@@ -25,6 +31,8 @@ class AuthUser {
       id: _asInt(json['id']),
       phone: json['phone']?.toString() ?? '',
       fullName: json['fullName']?.toString() ?? '',
+      email: json['email']?.toString() ?? '',
+      gender: json['gender']?.toString() ?? '',
       role: json['role']?.toString() ?? '',
       isActive: json['isActive'] == true,
     );
@@ -49,6 +57,7 @@ class VerifyOtpResponse {
   const VerifyOtpResponse({
     required this.success,
     required this.message,
+    required this.isProfileComplete,
     required this.isNewUser,
     required this.user,
     required this.accessToken,
@@ -58,6 +67,7 @@ class VerifyOtpResponse {
 
   final bool success;
   final String message;
+  final bool isProfileComplete;
   final bool isNewUser;
   final AuthUser user;
   final String accessToken;
@@ -68,13 +78,19 @@ class VerifyOtpResponse {
     final userJson = json['user'];
     final accessToken = json['accessToken']?.toString() ?? '';
     final refreshToken = json['refreshToken']?.toString() ?? '';
+    final hasProfileCompletionFlag = json.containsKey('isProfileComplete');
+    final isProfileComplete = json['isProfileComplete'] == true;
+    final isNewUser =
+        json['isNewUser'] == true ||
+        (hasProfileCompletionFlag && !isProfileComplete);
 
     return VerifyOtpResponse(
       success: json['success'] is bool
           ? json['success'] as bool
           : accessToken.isNotEmpty,
       message: json['message']?.toString() ?? '',
-      isNewUser: json['isNewUser'] == true,
+      isProfileComplete: isProfileComplete,
+      isNewUser: isNewUser,
       user: userJson is Map<String, dynamic>
           ? AuthUser.fromJson(userJson)
           : const AuthUser.empty(),

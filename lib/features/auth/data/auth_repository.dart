@@ -35,6 +35,8 @@ class AuthRepository {
     final response = await _apiClient.postJson(
       AuthApiEndpoint.verifyOtp,
       body: <String, dynamic>{'phone': phone, 'otp': otp},
+      showSuccessToast: false,
+      showErrorToast: false,
     );
 
     final verifyResponse = VerifyOtpResponse.fromJson(response);
@@ -63,7 +65,55 @@ class AuthRepository {
     return verifyResponse;
   }
 
+  Future<void> completeProfile({
+    required String fullName,
+    required String gender,
+    String? email,
+  }) async {
+    final trimmedName = fullName.trim();
+    final trimmedGender = gender.trim();
+    final trimmedEmail = email?.trim() ?? '';
+
+    final response = await _apiClient.postJson(
+      UserApiEndpoint.completeProfile,
+      requiresAuth: true,
+      showSuccessToast: false,
+      body: <String, dynamic>{
+        'fullName': trimmedName,
+        'gender': trimmedGender,
+        if (trimmedEmail.isNotEmpty) 'email': trimmedEmail,
+      },
+    );
+
+    final success = response['success'];
+    if (success is bool && !success) {
+      throw ApiException(
+        message:
+            response['message']?.toString() ?? 'Unable to complete profile',
+      );
+    }
+
+    await _sessionManager.updateFullName(trimmedName);
+  }
+
   Future<void> logout() async {
-    await _sessionManager.clearSession();
+    try {
+      final response = await _apiClient.postJson(
+        AuthApiEndpoint.logout,
+        requiresAuth: true,
+        showSuccessToast: false,
+      );
+
+      final success = response['success'];
+      if (success is bool && !success) {
+        throw ApiException(
+          message: response['message']?.toString() ?? 'Unable to logout',
+        );
+      }
+    } catch (_) {
+      // Even if the API call fails, clear local session to ensure user is logged out locally.
+    } finally {
+      await _sessionManager.clearSession();
+    }
   }
 }

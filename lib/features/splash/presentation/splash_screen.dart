@@ -37,26 +37,34 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: <Color>[Color(0xFF29C9E0), Color(0xFF00D09C)],
-          ),
-        ),
-        child: const Center(
-          child: Text(
-            'Helperr4u',
-            style: TextStyle(
-              fontFamily: 'Georgia',
-              fontSize: 34,
-              fontStyle: FontStyle.italic,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: Container(
+          width: double.infinity,
+          height: double.infinity,
+          color: Colors.white,
+          child: const Center(
+            child: SizedBox(
+              width: 140,
+              height: 100,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Color(0xFF0F2A47),
+                  borderRadius: BorderRadius.all(Radius.circular(12)),
+                ),
+                child: Center(
+                  child: Text(
+                    'Bookus',
+                    style: TextStyle(
+                      fontFamily: 'Georgia',
+                      fontSize: 26,
+                      fontStyle: FontStyle.italic,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         ),

@@ -39,13 +39,17 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFB),
+      backgroundColor: const Color(0xFFF7F8FA),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0B2A4A),
         elevation: 0,
         title: const Text(
           'Booking Details',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+            fontSize: 18,
+          ),
         ),
         leading: IconButton(
           onPressed: () => Navigator.of(context).pop(),
@@ -80,20 +84,24 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
             return const Center(child: Text('Booking not found'));
           }
 
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              _buildStatusBadge(booking),
-              const SizedBox(height: 16),
-              _buildServiceDetailsCard(booking),
-              const SizedBox(height: 16),
-              _buildBookingDetailsCard(booking),
-              const SizedBox(height: 16),
-              _buildHelperInfoCard(booking),
-              const SizedBox(height: 16),
-              _buildBillDetailsCard(booking),
-              const SizedBox(height: 24),
-            ],
+          return SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 22),
+            child: Column(
+              children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: _buildStatusBadge(booking),
+                ),
+                const SizedBox(height: 16),
+                _buildServiceDetailsCard(booking),
+                const SizedBox(height: 14),
+                _buildBookingDetailsCard(booking),
+                const SizedBox(height: 14),
+                _buildHelperInfoCard(booking),
+                const SizedBox(height: 14),
+                _buildBillDetailsCard(booking),
+              ],
+            ),
           );
         },
       ),
@@ -101,21 +109,21 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
   }
 
   Widget _buildStatusBadge(BookingDetailsModal booking) {
-    Color backgroundColor = const Color(0xFFBBF7D0);
-    Color textColor = const Color(0xFF064E3B);
+    Color backgroundColor = const Color(0xFFE7F8EC);
+    Color textColor = const Color(0xFF16A34A);
     String statusLabel = 'Completed';
 
     if (booking.status.toLowerCase().contains('cancel')) {
-      backgroundColor = const Color(0xFFFCA5A5);
-      textColor = Colors.white;
+      backgroundColor = const Color(0xFFFFE4E6);
+      textColor = const Color(0xFFEF4444);
       statusLabel = 'Canceled';
     } else if (booking.status.toLowerCase().contains('pending')) {
-      backgroundColor = const Color(0xFFFFEDD5);
-      textColor = const Color(0xFF7C2D12);
-      statusLabel = 'Pending';
+      backgroundColor = const Color(0xFFFFF3E0);
+      textColor = const Color(0xFFF97316);
+      statusLabel = 'Scheduled';
     } else if (booking.status.toLowerCase().contains('progress')) {
-      backgroundColor = const Color(0xFFE0E7FF);
-      textColor = const Color(0xFF3730A3);
+      backgroundColor = const Color(0xFFEFF6FF);
+      textColor = const Color(0xFF2563EB);
       statusLabel = 'In Progress';
     }
 
@@ -123,14 +131,14 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: backgroundColor,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         statusLabel,
         style: TextStyle(
           color: textColor,
           fontSize: 12,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
@@ -138,11 +146,11 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
 
   Widget _buildServiceDetailsCard(BookingDetailsModal booking) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE7EAF0)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -152,14 +160,14 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
               const Text(
                 'Service Details',
                 style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
                   color: Color(0xFF111827),
                 ),
               ),
               const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                 decoration: BoxDecoration(
                   color: const Color(0xFFEAF4FF),
                   borderRadius: BorderRadius.circular(999),
@@ -168,7 +176,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
                   booking.serviceDisplayName,
                   style: const TextStyle(
                     fontSize: 11,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                     color: Color(0xFF0B6DD4),
                   ),
                 ),
@@ -176,12 +184,15 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          _buildServiceItem('Safe Cleaning', 250),
-          const SizedBox(height: 8),
-          _buildServiceItem('Deep Cleaning', 300),
-          const SizedBox(height: 8),
-          _buildServiceItem('Deep Cleaning', 340),
-          const SizedBox(height: 8),
+          _buildServiceItem(
+            booking.serviceDisplayName,
+            '${booking.totalHours == 1 ? '1 hour' : '${booking.totalHours} hours'}',
+          ),
+          const SizedBox(height: 10),
+          _buildServiceItem('Deep Cleaning', '1 hour'),
+          const SizedBox(height: 10),
+          _buildServiceItem('Deep Cleaning', '1 hour'),
+          const SizedBox(height: 10),
           TextButton(
             onPressed: () {},
             style: TextButton.styleFrom(
@@ -192,46 +203,67 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
             child: const Text(
               'Less',
               style: TextStyle(
-                fontSize: 13,
+                fontSize: 12.5,
                 fontWeight: FontWeight.w600,
                 color: Color(0xFF6B7280),
               ),
             ),
+          ),
+          const Divider(height: 20, thickness: 1, color: Color(0xFFEAECEF)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Total Service Hours',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF374151),
+                ),
+              ),
+              Text(
+                '${booking.totalHours == 1 ? '1 hour' : '${booking.totalHours} hours'}',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF374151),
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _buildServiceItem(String name, int price) {
+  Widget _buildServiceItem(String name, String duration) {
     return Row(
       children: [
-        const SizedBox(width: 6),
-        const Text(
-          '•',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
+        const Padding(
+          padding: EdgeInsets.only(left: 4),
+          child: Icon(
+            Icons.circle,
+            size: 5,
             color: Color(0xFF111827),
           ),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 12),
         Expanded(
           child: Text(
             name,
             style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: Color(0xFF374151),
+              fontSize: 13.5,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF111827),
             ),
           ),
         ),
         Text(
-          '₹$price',
+          duration,
           style: const TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: Color(0xFF111827),
+            color: Color(0xFF6B7280),
           ),
         ),
       ],
@@ -240,11 +272,11 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
 
   Widget _buildBookingDetailsCard(BookingDetailsModal booking) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE7EAF0)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -252,31 +284,43 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
           const Text(
             'Booking detail',
             style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
               color: Color(0xFF111827),
             ),
           ),
-          const SizedBox(height: 12),
-          _buildDetailRow(
+          const SizedBox(height: 8),
+          Text(
             'Booking ID: ${booking.id}',
-            icon: Icons.info_outline,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Color(0xFF9CA3AF),
+              fontWeight: FontWeight.w500,
+            ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
+          const Divider(height: 1, thickness: 1, color: Color(0xFFF1F5F9)),
+          const SizedBox(height: 14),
           _buildDetailRow(
-            booking.displayDateLabel,
+            'Date',
+            value: booking.displayDateLabel,
             icon: Icons.calendar_today_outlined,
           ),
           const SizedBox(height: 12),
           _buildDetailRow(
-            '${booking.displayTimeLabel} • 2 hours 30 minutes',
+            'Time & Duration',
+            value: '${booking.displayTimeLabel} • ${booking.totalHours} hours',
             icon: Icons.access_time_outlined,
           ),
           const SizedBox(height: 12),
           _buildDetailRow(
-            booking.fullAddress ?? booking.address ?? 'Your Location',
+            'Service Location',
+            value: booking.fullAddress ?? booking.address ?? 'Your Location',
             icon: Icons.location_on_outlined,
-            subtitle: 'Malad, India',
+            subtitle: [booking.city, booking.pinCode]
+                .whereType<String>()
+                .where((e) => e.trim().isNotEmpty)
+                .join(', '),
           ),
         ],
       ),
@@ -284,7 +328,8 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
   }
 
   Widget _buildDetailRow(
-    String value, {
+    String title, {
+    required String value,
     IconData? icon,
     String? subtitle,
   }) {
@@ -292,7 +337,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (icon != null) ...[
-          Icon(icon, size: 18, color: const Color(0xFF0B6DD4)),
+          Icon(icon, size: 17, color: const Color(0xFF1E88E5)),
           const SizedBox(width: 10),
         ],
         Expanded(
@@ -300,11 +345,20 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF94A3B8),
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
                 value,
                 style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF6B7280),
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF334155),
                 ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -332,11 +386,11 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
     final user = helper?.user;
 
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE7EAF0)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -344,12 +398,12 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
           const Text(
             'Helper Information',
             style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
               color: Color(0xFF111827),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           Row(
             children: [
               Container(
@@ -379,15 +433,15 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
                     Text(
                       user?.fullName ?? 'Helper',
                       style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
                         color: Color(0xFF111827),
                       ),
                     ),
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        const Icon(Icons.star, size: 14, color: Color(0xFFFCD34D)),
+                        const Icon(Icons.star, size: 14, color: Color(0xFFF59E0B)),
                         const SizedBox(width: 4),
                         Text(
                           '${helper?.rating.toStringAsFixed(1) ?? '0.0'} (250+ reviews)',
@@ -416,11 +470,11 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
     final itemTotal = amountToShow + (discountAmount - taxToShow);
 
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE7EAF0)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -428,8 +482,8 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
           const Text(
             'Bill Details',
             style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
               color: Color(0xFF111827),
             ),
           ),
@@ -511,15 +565,15 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
                 'Total Amount',
                 style: TextStyle(
                   fontSize: 14,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w800,
                   color: Color(0xFF111827),
                 ),
               ),
               Text(
                 '₹${amountToShow.abs()}',
                 style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
                   color: Color(0xFF111827),
                 ),
               ),
