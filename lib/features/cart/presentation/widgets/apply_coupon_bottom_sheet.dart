@@ -5,12 +5,13 @@ import 'package:flutter/services.dart';
 import '../../../../app/widgets/skeleton_shimmer.dart';
 import '../../application/cart_provider.dart';
 import '../../application/coupon_provider.dart';
+import '../../data/cart_repository.dart';
 import '../../modal/available_coupons_modal.dart';
 
 class ApplyCouponScreen extends ConsumerStatefulWidget {
   const ApplyCouponScreen({super.key});
 
-  static const Color _pageBg = Color(0xFFF3F4F6);
+  static const Color _pageBg = Colors.white;
 
   @override
   ConsumerState<ApplyCouponScreen> createState() => _ApplyCouponScreenState();
@@ -112,6 +113,46 @@ class _ApplyCouponScreenState extends ConsumerState<ApplyCouponScreen> {
     }
   }
 
+  Future<bool> _applyManualCoupon(String couponCode) async {
+    if (couponCode.isEmpty) {
+      return false;
+    }
+
+    try {
+      await ref
+          .read(cartRepositoryProvider)
+          .applyCoupon(couponCode: couponCode);
+
+      if (!mounted) {
+        return false;
+      }
+
+      setState(() {
+        _appliedCouponCode = couponCode;
+      });
+
+      ref.invalidate(appliedCouponsProvider);
+      ref.invalidate(availableCouponsProvider);
+      await ref.read(cartProvider.notifier).loadSummary(forceRefresh: true);
+      return true;
+    } catch (error) {
+      if (!mounted) {
+        return false;
+      }
+
+      _showCouponErrorDialog('Oops coupon does not exist.');
+      return false;
+    }
+  }
+
+  void _showCouponErrorDialog(String message) {
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => _CouponErrorDialog(message: message),
+      isDismissible: false,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final couponAsync = ref.watch(availableCouponsProvider);
@@ -175,7 +216,9 @@ class _ApplyCouponScreenState extends ConsumerState<ApplyCouponScreen> {
             error: (_, __) => const _CartTotalHeader(cartTotal: 0),
             data: (data) => _CartTotalHeader(cartTotal: data.cartTotal),
           ),
-          const _CouponCodeInputRow(),
+          _CouponCodeInputRow(
+            onManualApply: _applyManualCoupon,
+          ),
           const SizedBox(height: 12),
           Expanded(
             child: couponAsync.when(
@@ -221,8 +264,52 @@ class _CartTotalHeader extends StatelessWidget {
   }
 }
 
-class _CouponCodeInputRow extends StatelessWidget {
-  const _CouponCodeInputRow();
+class _CouponCodeInputRow extends StatefulWidget {
+  const _CouponCodeInputRow({required this.onManualApply});
+
+  final Future<bool> Function(String) onManualApply;
+
+  @override
+  State<_CouponCodeInputRow> createState() => _CouponCodeInputRowState();
+}
+
+class _CouponCodeInputRowState extends State<_CouponCodeInputRow> {
+  late TextEditingController _controller;
+  bool _isApplying = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _applyCode() async {
+    final code = _controller.text.trim().toUpperCase();
+    if (code.isNotEmpty && !_isApplying) {
+      setState(() {
+        _isApplying = true;
+      });
+
+      try {
+        final success = await widget.onManualApply(code);
+        if (success && mounted) {
+          _controller.clear();
+        }
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isApplying = false;
+          });
+        }
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -236,26 +323,50 @@ class _CouponCodeInputRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Expanded(
-            child: Text(
-              'Enter Coupon Code',
-              style: TextStyle(
+          Expanded(
+            child: TextField(
+              controller: _controller,
+              style: const TextStyle(
                 fontSize: 13,
                 color: Color(0xFF111827),
                 fontWeight: FontWeight.w500,
               ),
+              decoration: const InputDecoration(
+                hintText: 'Enter Coupon Code',
+                hintStyle: TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF111827),
+                  fontWeight: FontWeight.w500,
+                ),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+              textCapitalization: TextCapitalization.characters,
+              onSubmitted: (_) => _applyCode(),
             ),
           ),
           GestureDetector(
-            onTap: null,
-            child: const Text(
-              'APPLY',
-              style: TextStyle(
-                fontSize: 12,
-                color: Color(0xFF9CA3AF),
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+            onTap: _isApplying ? null : _applyCode,
+            child: _isApplying
+                ? const SizedBox(
+                    height: 14,
+                    width: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Color(0xFFFF6B00),
+                      ),
+                    ),
+                  )
+                : const Text(
+                    'APPLY',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFFFF6B00),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
           ),
         ],
       ),
@@ -297,21 +408,35 @@ class _CouponList extends StatelessWidget {
       );
     }
 
+    final hasAnyApplicableCoupon = coupons.any(
+      (coupon) => coupon.isApplicable && !appliedCouponCodes.contains(coupon.code),
+    );
+
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
       itemCount: coupons.length + 1,
       itemBuilder: (context, index) {
         if (index == 0) {
-          return const Padding(
-            padding: EdgeInsets.fromLTRB(2, 12, 2, 14),
-            child: Text(
-              'More offers',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF111827),
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (!hasAnyApplicableCoupon)
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(0, 10, 0, 12),
+                  child: _NoEligibleCouponBanner(),
+                ),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(2, 0, 2, 14),
+                child: Text(
+                  'More offers',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF111827),
+                  ),
+                ),
               ),
-            ),
+            ],
           );
         }
 
@@ -329,6 +454,48 @@ class _CouponList extends StatelessWidget {
           onRemoveTap: () => onRemoveCoupon(coupon),
         );
       },
+    );
+  }
+}
+
+class _NoEligibleCouponBanner extends StatelessWidget {
+  const _NoEligibleCouponBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBEA),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFF4DB86), width: 1.2),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: EdgeInsets.only(top: 2),
+            child: Icon(
+              Icons.info,
+              size: 18,
+              color: Color(0xFFEAB308),
+            ),
+          ),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Items added to your cart are not eligible for any coupons',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF4B5563),
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -562,6 +729,67 @@ class _CouponListSkeleton extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _CouponErrorDialog extends StatelessWidget {
+  const _CouponErrorDialog({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.cancel,
+              size: 48,
+              color: Color(0xFFDC2626),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF111827),
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0B1F3A),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                child: const Text(
+                  'Back',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

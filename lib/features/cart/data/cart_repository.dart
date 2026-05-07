@@ -103,6 +103,7 @@ class CartRepository {
       CartApiEndpoint.applyCoupon,
       requiresAuth: true,
       showSuccessToast: false,
+      showErrorToast: false,
       body: <String, dynamic>{'couponCode': couponCode},
     );
 
@@ -116,6 +117,7 @@ class CartRepository {
       CartApiEndpoint.removeCoupon,
       requiresAuth: true,
       showSuccessToast: false,
+      showErrorToast: false,
       body: <String, dynamic>{'couponCode': couponCode},
     );
 

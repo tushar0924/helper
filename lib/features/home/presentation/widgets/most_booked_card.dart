@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/utils/app_toast.dart';
@@ -203,7 +204,12 @@ class _CartActionButton extends StatelessWidget {
       final bgColor = disableIncrement ? const Color(0xFFE5E7EB) : const Color(0xFF09A6E8);
       final textColor = disableIncrement ? const Color(0xFF9CA3AF) : Colors.white;
       return InkWell(
-        onTap: disableIncrement || isAddLoading ? null : onAdd,
+        onTap: disableIncrement || isAddLoading
+            ? null
+            : () {
+                HapticFeedback.vibrate();
+                onAdd();
+              },
         borderRadius: BorderRadius.circular(7),
         child: Container(
           height: 21,
@@ -247,7 +253,12 @@ class _CartActionButton extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           InkWell(
-            onTap: isDecrementLoading ? null : onDecrement,
+            onTap: isDecrementLoading
+                ? null
+                : () {
+                    HapticFeedback.vibrate();
+                    onDecrement();
+                  },
             borderRadius: BorderRadius.circular(7),
             child: SizedBox(
               width: 20,
@@ -284,7 +295,12 @@ class _CartActionButton extends StatelessWidget {
             ),
           ),
           InkWell(
-            onTap: disableIncrement || isIncrementLoading ? null : onIncrement,
+            onTap: disableIncrement || isIncrementLoading
+                ? null
+                : () {
+                    HapticFeedback.vibrate();
+                    onIncrement();
+                  },
             borderRadius: BorderRadius.circular(7),
             child: SizedBox(
               width: 20,

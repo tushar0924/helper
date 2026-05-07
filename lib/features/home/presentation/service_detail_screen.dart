@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/utils/app_toast.dart';
@@ -348,27 +349,28 @@ class _ServiceListingContent extends ConsumerWidget {
           children: [
             const Icon(
               Icons.home_repair_service_outlined,
-              size: 36,
+              size: 40,
               color: Color(0xFF9AA4B2),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 14),
             const Text(
               'Currently no services available for this category',
               style: TextStyle(
                 color: Color(0xFF4B5563),
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Please check back later or explore other categories.',
+              style: TextStyle(
+                color: Color(0xFF9AA4B2),
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
               ),
               textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton(
-              onPressed: () {
-                ref
-                    .read(serviceControllerProvider.notifier)
-                    .loadServicesForCategory(categoryId, forceRefresh: true);
-              },
-              child: const Text('Retry'),
             ),
           ],
         ),
@@ -753,7 +755,6 @@ class _ServiceCard extends ConsumerWidget {
                                   return;
                                 }
                                 if (result == CartAddResult.added) {
-                                  AppToast.success('${item.name} added to cart');
                                   return;
                                 }
                                 if (result == CartAddResult.failed) {
@@ -780,9 +781,7 @@ class _ServiceCard extends ConsumerWidget {
                                       serviceId: item.id,
                                       quantity: 1,
                                     );
-                                if (context.mounted && replaced) {
-                                  AppToast.success('${item.name} added to cart');
-                                } else if (context.mounted) {
+                                if (!replaced && context.mounted) {
                                   final message =
                                       ref.read(cartProvider).errorMessage;
                                   if (message != null && message.isNotEmpty) {
@@ -985,7 +984,13 @@ class _CartActionButton extends StatelessWidget {
       return SizedBox(
         height: 28,
         child: ElevatedButton(
-          onPressed: disableIncrement || isAddLoading ? null : onAdd,
+          onPressed: disableIncrement || isAddLoading
+              ? null
+              : () {
+                  HapticFeedback.lightImpact();
+                  HapticFeedback.vibrate();
+                  onAdd();
+                },
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF0EA5C6),
             padding: EdgeInsets.zero,
@@ -1026,7 +1031,12 @@ class _CartActionButton extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           InkWell(
-            onTap: isDecrementLoading ? null : onDecrement,
+            onTap: isDecrementLoading
+                ? null
+                : () {
+                    HapticFeedback.vibrate();
+                    onDecrement();
+                  },
             borderRadius: BorderRadius.circular(8),
             child: SizedBox(
               width: 30,
@@ -1063,7 +1073,12 @@ class _CartActionButton extends StatelessWidget {
             ),
           ),
           InkWell(
-            onTap: disableIncrement || isIncrementLoading ? null : onIncrement,
+            onTap: disableIncrement || isIncrementLoading
+                ? null
+                : () {
+                    HapticFeedback.vibrate();
+                    onIncrement();
+                  },
             borderRadius: BorderRadius.circular(8),
             child: SizedBox(
               width: 30,

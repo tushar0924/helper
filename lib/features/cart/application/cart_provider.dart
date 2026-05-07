@@ -279,8 +279,8 @@ class CartController extends StateNotifier<CartState> {
 
   bool isAddDisabled(int serviceId) {
     return quantityForServiceId(serviceId) >= maxQuantity ||
-        state.isMutating ||
-        state.mutatingServiceId != null;
+      (state.isMutating && state.mutatingServiceId == null) ||
+      state.mutatingServiceId == serviceId;
   }
 
   bool isServiceMutating(int serviceId) {
