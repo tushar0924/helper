@@ -36,6 +36,7 @@ class ServiceDetailScreen extends ConsumerStatefulWidget {
 class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
   final TextEditingController _searchController = TextEditingController();
   bool _isCartBannerDismissed = false;
+  String _selectedFilter = 'All Filter';
 
   @override
   void initState() {
@@ -71,15 +72,34 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
         : const <ServiceModal>[];
 
     final query = _searchController.text.trim().toLowerCase();
+    final selectedFilterText = _selectedFilter.trim().toLowerCase();
     final filtered = services
         .where((item) {
+          final nameText = item.name.toLowerCase();
+          final matchesFilter = selectedFilterText == 'all filter' ||
+              nameText.contains(selectedFilterText);
+          if (!matchesFilter) {
+            return false;
+          }
+
           if (query.isEmpty) {
             return true;
           }
-          return item.name.toLowerCase().contains(query) ||
+          return nameText.contains(query) ||
               item.safeDescription.toLowerCase().contains(query);
         })
         .toList(growable: false);
+
+    const filterOptions = <String>[
+      'All Filter',
+      'Sofa',
+      'Balcony',
+      'Furniture',
+    ];
+
+    if (!filterOptions.contains(_selectedFilter)) {
+      _selectedFilter = 'All Filter';
+    }
 
     final sortedByRating = [...filtered]
       ..sort((a, b) => b.rating.compareTo(a.rating));
@@ -143,6 +163,13 @@ class _ServiceDetailScreenState extends ConsumerState<ServiceDetailScreen> {
                     _SearchRow(
                       controller: _searchController,
                       onChanged: (_) => setState(() {}),
+                      filterOptions: filterOptions,
+                      selectedFilter: _selectedFilter,
+                      onFilterSelected: (value) {
+                        setState(() {
+                          _selectedFilter = value;
+                        });
+                      },
                     ),
                     const SizedBox(height: 12),
                     if (homeBootstrapState.showComingSoon)
@@ -343,37 +370,50 @@ class _ServiceListingContent extends ConsumerWidget {
     }
 
     if (!isLoading && filtered.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.home_repair_service_outlined,
-              size: 40,
-              color: Color(0xFF9AA4B2),
-            ),
-            const SizedBox(height: 14),
-            const Text(
-              'Currently no services available for this category',
-              style: TextStyle(
-                color: Color(0xFF4B5563),
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.home_repair_service_outlined,
+                        size: 40,
+                        color: Color(0xFF9AA4B2),
+                      ),
+                      const SizedBox(height: 14),
+                      const Text(
+                        'Currently no services available for this category',
+                        style: TextStyle(
+                          color: Color(0xFF4B5563),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Please check back later or explore other categories.',
+                        style: TextStyle(
+                          color: Color(0xFF9AA4B2),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 8),
-            const Text(
-              'Please check back later or explore other categories.',
-              style: TextStyle(
-                color: Color(0xFF9AA4B2),
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
+          );
+        },
       );
     }
 
@@ -497,10 +537,19 @@ class _HeroBanner extends StatelessWidget {
 }
 
 class _SearchRow extends StatelessWidget {
-  const _SearchRow({required this.controller, required this.onChanged});
+  const _SearchRow({
+    required this.controller,
+    required this.onChanged,
+    required this.filterOptions,
+    required this.selectedFilter,
+    required this.onFilterSelected,
+  });
 
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
+  final List<String> filterOptions;
+  final String selectedFilter;
+  final ValueChanged<String> onFilterSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -508,29 +557,33 @@ class _SearchRow extends StatelessWidget {
       children: [
         Expanded(
           child: Container(
-            height: 40,
+            height: 46,
             decoration: BoxDecoration(
               color: const Color(0xFFF8F9FB),
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(16),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 14),
             child: Row(
               children: [
-                const Icon(Icons.search, size: 16, color: Color(0xFF8D96A2)),
-                const SizedBox(width: 8),
+                const Icon(Icons.search, size: 19, color: Color(0xFF8D96A2)),
+                const SizedBox(width: 10),
                 Expanded(
                   child: TextField(
                     controller: controller,
                     onChanged: onChanged,
-                    style: const TextStyle(fontSize: 12),
+                    onTapOutside: (_) {
+                      FocusManager.instance.primaryFocus?.unfocus();
+                    },
+                    style: const TextStyle(fontSize: 14),
                     decoration: const InputDecoration(
                       hintText: 'Search within category...',
                       hintStyle: TextStyle(
                         color: Color(0xFF8E99A6),
-                        fontSize: 11,
+                        fontSize: 14,
                       ),
                       border: InputBorder.none,
                       isDense: true,
+                      contentPadding: EdgeInsets.symmetric(vertical: 11),
                     ),
                   ),
                 ),
@@ -540,13 +593,41 @@ class _SearchRow extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Container(
-          width: 40,
-          height: 40,
+          width: 46,
+          height: 46,
           decoration: BoxDecoration(
             color: const Color(0xFFF8F9FB),
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(16),
           ),
-          child: const Icon(Icons.tune, size: 17, color: Color(0xFF385476)),
+          child: PopupMenuButton<String>(
+            tooltip: 'Filter',
+            color: Colors.white,
+            elevation: 6,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: const BorderSide(color: Color(0xFFE5E7EB)),
+            ),
+            position: PopupMenuPosition.under,
+            onSelected: onFilterSelected,
+            itemBuilder: (context) {
+              return filterOptions.map((option) {
+                final isSelected = option == selectedFilter;
+                return PopupMenuItem<String>(
+                  value: option,
+                  child: Text(
+                    option,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight:
+                          isSelected ? FontWeight.w700 : FontWeight.w500,
+                      color: const Color(0xFF111827),
+                    ),
+                  ),
+                );
+              }).toList(growable: false);
+            },
+            icon: const Icon(Icons.tune, size: 22, color: Color(0xFF385476)),
+          ),
         ),
       ],
     );

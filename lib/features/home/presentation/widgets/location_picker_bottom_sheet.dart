@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../../../../app/utils/app_toast.dart';
 import '../../../home/application/address_provider.dart';
@@ -18,8 +19,12 @@ class LocationPickerBottomSheet extends ConsumerStatefulWidget {
 
 class _LocationPickerBottomSheetState
     extends ConsumerState<LocationPickerBottomSheet> {
+  static const int _inlineSavedAddressLimit = 2;
+
   bool _loadingAddresses = true;
   bool _savingSelection = false;
+  bool _isSavingCurrentLocation = false;
+  int? _savingAddressId;
   String? _errorMessage;
   List<SavedAddress> _addresses = const <SavedAddress>[];
 
@@ -63,6 +68,8 @@ class _LocationPickerBottomSheetState
 
     setState(() {
       _savingSelection = true;
+      _isSavingCurrentLocation = true;
+      _savingAddressId = null;
     });
 
     try {
@@ -80,6 +87,7 @@ class _LocationPickerBottomSheetState
       if (mounted) {
         setState(() {
           _savingSelection = false;
+          _isSavingCurrentLocation = false;
         });
       }
     }
@@ -92,6 +100,8 @@ class _LocationPickerBottomSheetState
 
     setState(() {
       _savingSelection = true;
+      _savingAddressId = address.id;
+      _isSavingCurrentLocation = false;
     });
 
     try {
@@ -109,6 +119,7 @@ class _LocationPickerBottomSheetState
       if (mounted) {
         setState(() {
           _savingSelection = false;
+          _savingAddressId = null;
         });
       }
     }
@@ -131,6 +142,8 @@ class _LocationPickerBottomSheetState
 
     setState(() {
       _savingSelection = true;
+      _isSavingCurrentLocation = false;
+      _savingAddressId = null;
     });
 
     try {
@@ -148,23 +161,43 @@ class _LocationPickerBottomSheetState
       if (mounted) {
         setState(() {
           _savingSelection = false;
+          _savingAddressId = null;
         });
       }
     }
   }
 
+  Future<void> _openLocationSettings() async {
+    await Geolocator.openLocationSettings();
+  }
+
+  Future<void> _openSavedAddresses() async {
+    Navigator.of(context).pop();
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const SavedAddressesScreen(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final homeState = ref.watch(homeBootstrapProvider);
+    final locationIssueMessage = homeState.locationIssueMessage;
     final currentLocationText =
-        homeState.locationLine?.trim().isNotEmpty == true
+      locationIssueMessage ??
+      (homeState.locationLine?.trim().isNotEmpty == true
         ? homeState.locationLine!.trim()
-        : 'Use your current GPS location';
+        : 'Use your current GPS location');
     final currentLabel =
-        homeState.selectedLocationSource ==
+      locationIssueMessage != null
+      ? 'Location is off'
+      : (homeState.selectedLocationSource ==
             SelectedLocationSource.currentLocation
-        ? 'Current location selected'
-        : 'Use current location';
+          ? 'Current location selected'
+          : 'Use current location');
+    final inlineAddresses = _addresses.take(_inlineSavedAddressLimit).toList();
+    final hasMoreSavedAddresses = _addresses.length > inlineAddresses.length;
 
     return SafeArea(
       child: Padding(
@@ -207,22 +240,95 @@ class _LocationPickerBottomSheetState
               ),
             ),
             const SizedBox(height: 16),
+            if (locationIssueMessage != null)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF6EA6FF), Color(0xFF5A8DED)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.location_on_outlined,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Location Permission is Off',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            locationIssueMessage,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFFF8FAFC),
+                              height: 1.35,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    SizedBox(
+                      height: 36,
+                      child: FilledButton(
+                        onPressed: _openLocationSettings,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: const Color(0xFF4F7DDA),
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: const Text(
+                          'GRANT',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            if (locationIssueMessage != null) const SizedBox(height: 12),
             _ActionCard(
               icon: Icons.my_location,
               iconBackground: const Color(0xFFE8F2FF),
               title: currentLabel,
               subtitle: currentLocationText,
               trailing:
-                  _savingSelection &&
-                      homeState.selectedLocationSource ==
-                          SelectedLocationSource.currentLocation
+                  _savingSelection && _isSavingCurrentLocation
                   ? const SizedBox(
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.arrow_forward_ios, size: 14),
-              onTap: _useCurrentLocation,
+              onTap: locationIssueMessage != null
+                  ? _openLocationSettings
+                  : _useCurrentLocation,
             ),
             const SizedBox(height: 12),
             _ActionCard(
@@ -247,15 +353,20 @@ class _LocationPickerBottomSheetState
                   ),
                 ),
                 TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const SavedAddressesScreen(),
-                      ),
-                    );
-                  },
-                  child: const Text('Manage'),
+                  onPressed: _openSavedAddresses,
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFFF97316),
+                    padding: EdgeInsets.zero,
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(
+                    hasMoreSavedAddresses ? 'View all' : 'Manage',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -323,10 +434,11 @@ class _LocationPickerBottomSheetState
               Flexible(
                 child: ListView.separated(
                   shrinkWrap: true,
-                  itemCount: _addresses.length,
+                  itemCount: inlineAddresses.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (context, index) {
-                    final address = _addresses[index];
+                    final address = inlineAddresses[index];
+                    final isSavingThisAddress = _savingAddressId == address.id;
                     return InkWell(
                       onTap: _savingSelection
                           ? null
@@ -373,7 +485,7 @@ class _LocationPickerBottomSheetState
                                           ),
                                         ),
                                       ),
-                                      if (_savingSelection)
+                                      if (isSavingThisAddress)
                                         const SizedBox(
                                           width: 16,
                                           height: 16,
@@ -402,6 +514,23 @@ class _LocationPickerBottomSheetState
                   },
                 ),
               ),
+            if (hasMoreSavedAddresses) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: _openSavedAddresses,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF0B1F3A),
+                    side: const BorderSide(color: Color(0xFFD1D5DB)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text('View all saved addresses'),
+                ),
+              ),
+            ],
           ],
         ),
       ),

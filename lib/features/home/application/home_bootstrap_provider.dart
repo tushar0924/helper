@@ -20,6 +20,7 @@ class HomeBootstrapState {
     this.locationLine,
     this.city,
     this.pincode,
+    this.locationIssueMessage,
     this.errorMessage,
   });
 
@@ -31,6 +32,7 @@ class HomeBootstrapState {
   final String? locationLine;
   final String? city;
   final String? pincode;
+  final String? locationIssueMessage;
   final String? errorMessage;
 
   HomeBootstrapState copyWith({
@@ -42,8 +44,10 @@ class HomeBootstrapState {
     String? locationLine,
     String? city,
     String? pincode,
+    String? locationIssueMessage,
     String? errorMessage,
     bool clearError = false,
+    bool clearLocationIssueMessage = false,
   }) {
     return HomeBootstrapState(
       isLoading: isLoading ?? this.isLoading,
@@ -56,6 +60,9 @@ class HomeBootstrapState {
       locationLine: locationLine ?? this.locationLine,
       city: city ?? this.city,
       pincode: pincode ?? this.pincode,
+      locationIssueMessage: clearLocationIssueMessage
+          ? null
+          : (locationIssueMessage ?? this.locationIssueMessage),
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
     );
   }
@@ -83,15 +90,29 @@ class HomeBootstrapController extends StateNotifier<HomeBootstrapState> {
 
   static const LatLng _fallbackLocation = LatLng(26.9124, 75.7873);
 
-  Future<void> loadForCurrentLocation() async {
+  Future<bool> loadForCurrentLocation() async {
     if (state.isLoading) {
-      return;
+      return false;
     }
 
-    state = state.copyWith(isLoading: true, clearError: true);
+    state = state.copyWith(
+      isLoading: true,
+      clearError: true,
+      clearLocationIssueMessage: true,
+    );
 
     try {
       final position = await _fetchCurrentLatLng();
+      if (position == null) {
+        state = state.copyWith(
+          isLoading: false,
+          hasLoaded: true,
+          locationIssueMessage:
+              'Location is turned off. Please enable GPS to use current location.',
+        );
+        return false;
+      }
+
       final draft = await _mapsService.reverseGeocode(position);
       final pincode = draft.pinCode.trim();
       final city = draft.city.trim();
@@ -110,8 +131,9 @@ class HomeBootstrapController extends StateNotifier<HomeBootstrapState> {
           city: city,
           pincode: pincode,
           showComingSoon: false,
+          clearLocationIssueMessage: true,
         );
-        return;
+        return true;
       }
 
       final response = await _repository.getHomeByPincode(pincode);
@@ -137,13 +159,16 @@ class HomeBootstrapController extends StateNotifier<HomeBootstrapState> {
         city: city,
         pincode: pincode,
         showComingSoon: showComingSoon,
+        clearLocationIssueMessage: true,
       );
+      return true;
     } catch (error) {
       state = state.copyWith(
         isLoading: false,
         hasLoaded: true,
         errorMessage: error.toString(),
       );
+      return false;
     }
   }
 
@@ -189,10 +214,16 @@ class HomeBootstrapController extends StateNotifier<HomeBootstrapState> {
       return;
     }
 
+    final currentLoaded = await loadForCurrentLocation();
+    if (currentLoaded) {
+      return;
+    }
+
     final selected = await _loadSelectedLocation();
-    if (selected == null ||
-        selected.source == SelectedLocationSource.currentLocation) {
-      await loadForCurrentLocation();
+    if (selected == null) {
+      if (!state.hasLoaded) {
+        state = state.copyWith(hasLoaded: true);
+      }
       return;
     }
 
@@ -233,6 +264,7 @@ class HomeBootstrapController extends StateNotifier<HomeBootstrapState> {
     state = state.copyWith(
       selectedLocationLabel: draft.label,
       selectedLocationSource: SelectedLocationSource.savedAddress,
+      clearLocationIssueMessage: true,
     );
   }
 
@@ -264,13 +296,14 @@ class HomeBootstrapController extends StateNotifier<HomeBootstrapState> {
     state = state.copyWith(
       selectedLocationLabel: draft.label,
       selectedLocationSource: SelectedLocationSource.manualSearch,
+      clearLocationIssueMessage: true,
     );
   }
 
-  Future<LatLng> _fetchCurrentLatLng() async {
+  Future<LatLng?> _fetchCurrentLatLng() async {
     final enabled = await Geolocator.isLocationServiceEnabled();
     if (!enabled) {
-      return _fallbackLocation;
+      return null;
     }
 
     var permission = await Geolocator.checkPermission();
@@ -280,7 +313,7 @@ class HomeBootstrapController extends StateNotifier<HomeBootstrapState> {
 
     if (permission == LocationPermission.denied ||
         permission == LocationPermission.deniedForever) {
-      return _fallbackLocation;
+      return null;
     }
 
     final position = await Geolocator.getCurrentPosition(

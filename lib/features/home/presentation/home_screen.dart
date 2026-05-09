@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -88,11 +90,7 @@ class _HelperTabViewState extends ConsumerState<HelperTabView>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      final city = _currentBannerCity();
-      ref.invalidate(bannerProvider(city));
-      if (city != null) {
-        ref.invalidate(bannerProvider(null));
-      }
+      unawaited(_refreshHomePage());
     }
   }
 
@@ -1105,6 +1103,9 @@ class _HomeBannerCarouselState extends State<_HomeBannerCarousel> {
                   child: TextField(
                     controller: widget.searchController,
                     onChanged: widget.onSearchChanged,
+                    onTapOutside: (_) {
+                      FocusManager.instance.primaryFocus?.unfocus();
+                    },
                     decoration: const InputDecoration(
                       hintText: 'Search services...',
                       hintStyle: TextStyle(
