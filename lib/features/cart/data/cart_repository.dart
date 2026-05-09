@@ -91,6 +91,7 @@ class CartRepository {
       CartApiEndpoint.availableCoupons,
       requiresAuth: true,
       showSuccessToast: false,
+      showErrorToast: false,
     );
 
     return AvailableCouponsModal.fromJson(response);
@@ -129,6 +130,7 @@ class CartRepository {
       CartApiEndpoint.appliedCoupons,
       requiresAuth: true,
       showSuccessToast: false,
+      showErrorToast: false,
     );
 
     return AppliedCouponsModal.fromJson(response);

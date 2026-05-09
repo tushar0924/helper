@@ -36,11 +36,22 @@ class BookingDetailsModal {
     required this.endTimeLabel,
     required this.startOtp,
     required this.serviceDisplayName,
-      required this.categoryName,
-      required this.categoryImageUrl,
+    required this.categoryName,
+    required this.categoryImageUrl,
+    required this.items,
+    required this.itemsSummary,
     required this.formattedDate,
     required this.formattedTime,
     required this.fullAddress,
+    required this.notes,
+    required this.specialRequirements,
+    required this.startedAt,
+    required this.completedAt,
+    required this.startedAtLabel,
+    required this.completedAtLabel,
+    required this.cancelReason,
+    required this.ratings,
+    required this.arrival,
     required this.helper,
     required this.customer,
     required this.payment,
@@ -84,9 +95,20 @@ class BookingDetailsModal {
   final String serviceDisplayName;
   final String? categoryName;
   final String? categoryImageUrl;
+  final List<BookingItemModal> items;
+  final BookingItemsSummaryModal? itemsSummary;
   final String? formattedDate;
   final String? formattedTime;
   final String? fullAddress;
+  final String? notes;
+  final String? specialRequirements;
+  final DateTime? startedAt;
+  final DateTime? completedAt;
+  final String? startedAtLabel;
+  final String? completedAtLabel;
+  final String? cancelReason;
+  final BookingRatingsModal? ratings;
+  final BookingArrivalModal? arrival;
   final BookingHelperModal? helper;
   final BookingCustomerModal? customer;
   final BookingPaymentModal? payment;
@@ -96,22 +118,61 @@ class BookingDetailsModal {
     final customerJson = _asMap(json['customer']);
     final paymentJson = _asMap(json['payment']);
     final categoryJson = _asMap(json['category']);
+    final arrivalJson = _asMap(json['arrival']);
+    final ratingsJson = _asMap(json['ratings']);
+    final itemsSummaryJson = _asMap(json['itemsSummary']);
+
+    final itemsList =
+        (json['items'] as List?)
+            ?.whereType<Map>()
+            .map(
+              (item) => BookingItemModal.fromJson(
+                item.map((key, value) => MapEntry(key.toString(), value)),
+              ),
+            )
+            .toList() ??
+        const <BookingItemModal>[];
+
+    final serviceDisplayName =
+        json['serviceDisplayName']?.toString().trim() ??
+        itemsSummaryJson?['serviceNames']?.toString().trim() ??
+        (itemsList.isNotEmpty ? itemsList.first.serviceName : '') ??
+        categoryJson?['name']?.toString().trim() ??
+        'Service';
+
+    final paymentExpiresRaw =
+        json['paymentExpiresAt']?.toString() ??
+        paymentJson?['expiresAt']?.toString();
+
+    final computedDuration = _asInt(json['duration']);
+    final computedTotalHours = _asInt(json['totalHours']);
+    final itemsDurationFallback = itemsList.fold<int>(
+      0,
+      (acc, item) =>
+          acc + (item.duration * (item.quantity <= 0 ? 1 : item.quantity)),
+    );
 
     return BookingDetailsModal(
       id: _asInt(json['id']),
       customerId: _asInt(json['customerId'] ?? 0),
       serviceId: _asNullableInt(json['serviceId']),
       servicePlanId: _asNullableInt(json['servicePlanId']),
-      categoryId: _asInt(json['categoryId'] ?? (categoryJson != null ? categoryJson['id'] : 0)),
-      helperId: helperJson != null ? _asInt(helperJson['id']) : _asInt(json['helperId']),
+      categoryId: _asInt(
+        json['categoryId'] ?? (categoryJson != null ? categoryJson['id'] : 0),
+      ),
+      helperId: helperJson != null
+          ? _asInt(helperJson['id'])
+          : _asInt(json['helperId']),
       bookingDate: DateTime.tryParse(json['bookingDate']?.toString() ?? ''),
       startTime: DateTime.tryParse(json['startTime']?.toString() ?? ''),
       endTime: DateTime.tryParse(json['endTime']?.toString() ?? ''),
-      duration: _asInt(json['duration']),
-      totalHours: _asInt(json['totalHours']),
-      paymentExpiresAt: DateTime.tryParse(
-        json['paymentExpiresAt']?.toString() ?? '',
-      ),
+      duration: computedDuration > 0
+          ? computedDuration
+          : (itemsDurationFallback > 0 ? itemsDurationFallback : 0),
+      totalHours: computedTotalHours > 0
+          ? computedTotalHours
+          : (computedDuration > 0 ? computedDuration : itemsDurationFallback),
+      paymentExpiresAt: DateTime.tryParse(paymentExpiresRaw ?? ''),
       status: json['status']?.toString().toUpperCase() ?? '',
       location: json['location']?.toString(),
       address: json['address']?.toString(),
@@ -137,15 +198,35 @@ class BookingDetailsModal {
       startTimeLabel: json['startTimeLabel']?.toString(),
       endTimeLabel: json['endTimeLabel']?.toString(),
       startOtp: json['startOtp']?.toString(),
-        serviceDisplayName: json['serviceDisplayName']?.toString() ??
-          (categoryJson != null
-            ? (categoryJson['name']?.toString() ?? 'Service')
-            : json['itemsSummary']?['serviceNames']?.toString() ?? 'Service'),
-        categoryName: categoryJson == null ? null : categoryJson['name']?.toString(),
-        categoryImageUrl: categoryJson == null ? null : categoryJson['imageUrl']?.toString(),
+      serviceDisplayName: serviceDisplayName.isEmpty
+          ? 'Service'
+          : serviceDisplayName,
+      categoryName: categoryJson == null
+          ? null
+          : categoryJson['name']?.toString(),
+      categoryImageUrl: categoryJson == null
+          ? null
+          : categoryJson['imageUrl']?.toString(),
+      items: itemsList,
+      itemsSummary: itemsSummaryJson == null
+          ? null
+          : BookingItemsSummaryModal.fromJson(itemsSummaryJson),
       formattedDate: json['formattedDate']?.toString(),
       formattedTime: json['formattedTime']?.toString(),
       fullAddress: json['fullAddress']?.toString(),
+      notes: json['notes']?.toString(),
+      specialRequirements: json['specialRequirements']?.toString(),
+      startedAt: DateTime.tryParse(json['startedAt']?.toString() ?? ''),
+      completedAt: DateTime.tryParse(json['completedAt']?.toString() ?? ''),
+      startedAtLabel: json['startedAtLabel']?.toString(),
+      completedAtLabel: json['completedAtLabel']?.toString(),
+      cancelReason: json['cancelReason']?.toString(),
+      ratings: ratingsJson == null
+          ? null
+          : BookingRatingsModal.fromJson(ratingsJson),
+      arrival: arrivalJson == null
+          ? null
+          : BookingArrivalModal.fromJson(arrivalJson),
       helper: helperJson == null
           ? null
           : BookingHelperModal.fromJson(helperJson),
@@ -159,15 +240,14 @@ class BookingDetailsModal {
   }
 
   Map<String, dynamic> toPartnerDetailsMap() {
-    final helperUser = helper?.user;
     return <String, dynamic>{
       'id': helper?.id ?? helperId,
       'userId': helper?.userId ?? 0,
-      'name': helperUser?.fullName ?? 'Partner',
-      'phone': helperUser?.phone ?? '',
+      'name': helper?.displayName ?? 'Partner',
+      'phone': helper?.phone ?? '',
       'rating': helper?.rating ?? 0,
-      'experience': helperUser?.experience ?? '',
-      'profileImage': helperUser?.profileImage ?? '',
+      'experience': helper?.experience ?? '',
+      'profileImage': helper?.profileImage ?? '',
       'bookingId': id,
       'serviceDisplayName': serviceDisplayName,
       'status': status,
@@ -217,6 +297,134 @@ class BookingDetailsModal {
 
   String get otpLabel =>
       startOtp?.trim().isNotEmpty == true ? startOtp!.trim() : '----';
+
+  bool get hasTrackingEnabled => arrival?.trackingEnabled == true;
+
+  bool get isServiceRated => ratings?.serviceRated == true;
+
+  bool get isPartnerRated => ratings?.partnerRated == true;
+
+  String? get primaryServiceImageUrl {
+    if (items.isNotEmpty && items.first.imageUrl != null) {
+      final image = items.first.imageUrl!.trim();
+      if (image.isNotEmpty) {
+        return image;
+      }
+    }
+    final categoryImage = categoryImageUrl?.trim();
+    if (categoryImage != null && categoryImage.isNotEmpty) {
+      return categoryImage;
+    }
+    return null;
+  }
+}
+
+class BookingItemModal {
+  const BookingItemModal({
+    required this.serviceId,
+    required this.serviceName,
+    required this.imageUrl,
+    required this.quantity,
+    required this.duration,
+    required this.price,
+  });
+
+  final int serviceId;
+  final String serviceName;
+  final String? imageUrl;
+  final int quantity;
+  final int duration;
+  final int price;
+
+  factory BookingItemModal.fromJson(Map<String, dynamic> json) {
+    return BookingItemModal(
+      serviceId: _asInt(json['serviceId']),
+      serviceName: json['serviceName']?.toString() ?? 'Service',
+      imageUrl: json['imageUrl']?.toString(),
+      quantity: _asInt(json['quantity']),
+      duration: _asInt(json['duration']),
+      price: _asInt(json['price']),
+    );
+  }
+}
+
+class BookingItemsSummaryModal {
+  const BookingItemsSummaryModal({
+    required this.totalItems,
+    required this.serviceNames,
+  });
+
+  final int totalItems;
+  final String serviceNames;
+
+  factory BookingItemsSummaryModal.fromJson(Map<String, dynamic> json) {
+    return BookingItemsSummaryModal(
+      totalItems: _asInt(json['totalItems']),
+      serviceNames: json['serviceNames']?.toString() ?? '',
+    );
+  }
+}
+
+class BookingRatingsModal {
+  const BookingRatingsModal({
+    required this.serviceRated,
+    required this.partnerRated,
+  });
+
+  final bool serviceRated;
+  final bool partnerRated;
+
+  factory BookingRatingsModal.fromJson(Map<String, dynamic> json) {
+    return BookingRatingsModal(
+      serviceRated: json['serviceRated'] == true,
+      partnerRated: json['partnerRated'] == true,
+    );
+  }
+}
+
+class BookingArrivalModal {
+  const BookingArrivalModal({
+    required this.trackingEnabled,
+    required this.arrivalState,
+    required this.etaSeconds,
+    required this.helperLocation,
+    required this.isLocationStale,
+  });
+
+  final bool trackingEnabled;
+  final String? arrivalState;
+  final int? etaSeconds;
+  final BookingLocationModal? helperLocation;
+  final bool isLocationStale;
+
+  factory BookingArrivalModal.fromJson(Map<String, dynamic> json) {
+    final helperLocationJson = _asMap(json['helperLocation']);
+    return BookingArrivalModal(
+      trackingEnabled: json['trackingEnabled'] == true,
+      arrivalState: json['arrivalState']?.toString().toUpperCase(),
+      etaSeconds: _asNullableInt(json['etaSeconds']),
+      helperLocation: helperLocationJson == null
+          ? null
+          : BookingLocationModal.fromJson(helperLocationJson),
+      isLocationStale: json['isLocationStale'] == true,
+    );
+  }
+}
+
+class BookingLocationModal {
+  const BookingLocationModal({required this.lat, required this.lng});
+
+  final double lat;
+  final double lng;
+
+  factory BookingLocationModal.fromJson(Map<String, dynamic> json) {
+    return BookingLocationModal(
+      lat: _asDouble(json['lat'] ?? json['latitude']),
+      lng: _asDouble(json['lng'] ?? json['longitude']),
+    );
+  }
+
+  bool get isValid => lat != 0 && lng != 0;
 }
 
 class BookingHelperModal {
@@ -224,27 +432,85 @@ class BookingHelperModal {
     required this.id,
     required this.userId,
     required this.rating,
+    required this.totalRatings,
+    required this.fullName,
+    required this.phone,
+    required this.profileImage,
+    required this.experienceYears,
+    required this.verified,
     required this.user,
   });
 
   final int id;
   final int userId;
   final double rating;
+  final int totalRatings;
+  final String fullName;
+  final String? phone;
+  final String? profileImage;
+  final int experienceYears;
+  final bool verified;
   final BookingHelperUserModal? user;
 
   factory BookingHelperModal.fromJson(Map<String, dynamic> json) {
     final userJson = _asMap(json['user']);
+    final normalizedFullName =
+        json['fullName']?.toString() ?? userJson?['fullName']?.toString() ?? '';
+    final normalizedPhone =
+        json['phone']?.toString() ?? userJson?['phone']?.toString();
+    final normalizedProfileImage =
+        json['profileImage']?.toString() ??
+        userJson?['profileImage']?.toString();
+
+    final normalizedUser = userJson == null
+        ? BookingHelperUserModal(
+            fullName: normalizedFullName,
+            phone: normalizedPhone,
+            experience:
+                json['experience']?.toString() ??
+                json['experienceYears']?.toString(),
+            profileImage: normalizedProfileImage,
+          )
+        : BookingHelperUserModal.fromJson(userJson);
+
     return BookingHelperModal(
       id: _asInt(json['id']),
       userId: _asInt(json['userId']),
       rating: _asDouble(json['rating']),
-      user: userJson == null ? null : BookingHelperUserModal.fromJson(userJson),
+      totalRatings: _asInt(json['totalRatings']),
+      fullName: normalizedFullName,
+      phone: normalizedPhone,
+      profileImage: normalizedProfileImage,
+      experienceYears: _asInt(json['experienceYears']),
+      verified: json['verified'] == true,
+      user: normalizedUser,
     );
   }
 
-  String get displayName => user?.fullName.trim().isNotEmpty == true
-      ? user!.fullName.trim()
-      : 'Partner';
+  String get displayName {
+    final nested = user?.fullName.trim();
+    if (nested != null && nested.isNotEmpty) {
+      return nested;
+    }
+
+    final direct = fullName.trim();
+    if (direct.isNotEmpty) {
+      return direct;
+    }
+
+    return 'Partner';
+  }
+
+  String? get experience {
+    final nested = user?.experience?.trim();
+    if (nested != null && nested.isNotEmpty) {
+      return nested;
+    }
+    if (experienceYears > 0) {
+      return '$experienceYears years';
+    }
+    return null;
+  }
 }
 
 class BookingHelperUserModal {
@@ -302,6 +568,8 @@ class BookingPaymentModal {
     required this.method,
     required this.escrowStatus,
     required this.refundReason,
+    required this.expiresAt,
+    required this.remainingSeconds,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -316,6 +584,8 @@ class BookingPaymentModal {
   final String? method;
   final String? escrowStatus;
   final String? refundReason;
+  final DateTime? expiresAt;
+  final int? remainingSeconds;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -333,7 +603,11 @@ class BookingPaymentModal {
       method: json['method']?.toString(),
       escrowStatus: json['escrowStatus']?.toString().toUpperCase(),
       refundReason: json['refundReason']?.toString(),
-      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? json['expiresAt']?.toString() ?? ''),
+      expiresAt: DateTime.tryParse(json['expiresAt']?.toString() ?? ''),
+      remainingSeconds: _asNullableRawInt(json['remainingSeconds']),
+      createdAt: DateTime.tryParse(
+        json['createdAt']?.toString() ?? json['expiresAt']?.toString() ?? '',
+      ),
       updatedAt: DateTime.tryParse(json['updatedAt']?.toString() ?? ''),
     );
   }
@@ -365,6 +639,19 @@ int? _asNullableInt(Object? value) {
   }
   final parsed = _asInt(value);
   return parsed == 0 ? null : parsed;
+}
+
+int? _asNullableRawInt(Object? value) {
+  if (value == null) {
+    return null;
+  }
+  if (value is int) {
+    return value;
+  }
+  if (value is num) {
+    return value.toInt();
+  }
+  return int.tryParse(value.toString());
 }
 
 double _asDouble(Object? value) {

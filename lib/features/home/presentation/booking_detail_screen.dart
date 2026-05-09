@@ -3,21 +3,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../cart/application/cart_provider.dart';
 import '../../cart/modal/booking_details_modal.dart';
+import '../../cart/modal/cart_summary_modal.dart';
+import '../../cart/presentation/booking_tracking_screen.dart';
 
 class BookingDetailScreen extends ConsumerStatefulWidget {
-  const BookingDetailScreen({
-    super.key,
-    required this.bookingId,
-  });
+  const BookingDetailScreen({super.key, required this.bookingId});
 
   final int bookingId;
 
   @override
-  ConsumerState<BookingDetailScreen> createState() => _BookingDetailScreenState();
+  ConsumerState<BookingDetailScreen> createState() =>
+      _BookingDetailScreenState();
 }
 
 class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
   late Future<BookingDetailsModal> _bookingFuture;
+  bool _navigatedToOtpScreen = false;
 
   @override
   void initState() {
@@ -27,7 +28,92 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
 
   Future<BookingDetailsModal> _loadBookingDetails() async {
     final cartRepo = ref.read(cartRepositoryProvider);
-    return cartRepo.getUserBooking(bookingId: widget.bookingId);
+    final booking = await cartRepo.getUserBooking(bookingId: widget.bookingId);
+    _maybeNavigateToOtpScreen(booking);
+    return booking;
+  }
+
+  void _maybeNavigateToOtpScreen(BookingDetailsModal booking) {
+    if (_navigatedToOtpScreen || !_shouldOpenOtpScreen(booking)) {
+      return;
+    }
+
+    _navigatedToOtpScreen = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => BookingTrackingScreen(
+            summary: _buildSummaryFromBooking(booking),
+            bookingId: booking.id,
+            bookingDetails: booking,
+            partnerDetails: booking.toPartnerDetailsMap(),
+          ),
+        ),
+      );
+    });
+  }
+
+  bool _shouldOpenOtpScreen(BookingDetailsModal booking) {
+    final status = booking.status.toUpperCase();
+    final hasOtp = booking.otpLabel != '----';
+    final isTerminal =
+        status.contains('COMPLETE') ||
+        status.contains('CANCELLED') ||
+        status.contains('CANCELED');
+
+    return hasOtp && !isTerminal;
+  }
+
+  CartSummaryModal _buildSummaryFromBooking(BookingDetailsModal booking) {
+    final items = booking.items
+        .map(
+          (item) => CartItemModal(
+            serviceId: item.serviceId,
+            name: item.serviceName,
+            imageUrl: item.imageUrl,
+            priceAtAdded: item.price,
+            originalPrice: item.price,
+            totalPrice: item.price * (item.quantity <= 0 ? 1 : item.quantity),
+            duration: item.duration,
+            quantity: item.quantity <= 0 ? 1 : item.quantity,
+            addons: const <Object?>[],
+          ),
+        )
+        .toList(growable: false);
+
+    return CartSummaryModal(
+      cartId: booking.id,
+      items: items,
+      slot: CartSlotModal(
+        date: booking.bookingDate?.toIso8601String(),
+        time: booking.startTimeLabel,
+      ),
+      address: CartAddressModal(
+        id: 0,
+        label: booking.customer?.fullName.isNotEmpty == true
+            ? booking.customer!.fullName
+            : 'Service Location',
+        address:
+            booking.fullAddress ?? booking.address ?? booking.location ?? '',
+        city: booking.city ?? '',
+        pinCode: booking.pinCode ?? '',
+        latitude: booking.latitude,
+        longitude: booking.longitude,
+      ),
+      coupon: null,
+      pricing: CartPricingModal(
+        itemTotal: booking.totalAmount,
+        addonTotal: 0,
+        discount: 0,
+        taxAndFee: booking.tax,
+        total: booking.finalAmount,
+      ),
+      lastUpdatedAt: booking.updatedAt,
+    );
   }
 
   void _refresh() {
@@ -84,6 +170,10 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
             return const Center(child: Text('Booking not found'));
           }
 
+          if (_shouldOpenOtpScreen(booking)) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
           return SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(14, 14, 14, 22),
             child: Column(
@@ -113,15 +203,24 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
     Color textColor = const Color(0xFF16A34A);
     String statusLabel = 'Completed';
 
-    if (booking.status.toLowerCase().contains('cancel')) {
+    final normalized = booking.status.toUpperCase();
+
+    if (normalized.contains('CANCEL')) {
       backgroundColor = const Color(0xFFFFE4E6);
       textColor = const Color(0xFFEF4444);
       statusLabel = 'Canceled';
-    } else if (booking.status.toLowerCase().contains('pending')) {
+    } else if (normalized.contains('COMPLETE')) {
+      backgroundColor = const Color(0xFFE7F8EC);
+      textColor = const Color(0xFF16A34A);
+      statusLabel = 'Completed';
+    } else if (normalized.contains('CONFIRMED') ||
+        normalized.contains('PENDING') ||
+        normalized.contains('ACCEPTED')) {
       backgroundColor = const Color(0xFFFFF3E0);
       textColor = const Color(0xFFF97316);
       statusLabel = 'Scheduled';
-    } else if (booking.status.toLowerCase().contains('progress')) {
+    } else if (normalized.contains('PROGRESS') ||
+        normalized.contains('STARTED')) {
       backgroundColor = const Color(0xFFEFF6FF);
       textColor = const Color(0xFF2563EB);
       statusLabel = 'In Progress';
@@ -145,6 +244,19 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
   }
 
   Widget _buildServiceDetailsCard(BookingDetailsModal booking) {
+    final serviceItems = booking.items;
+    final fallbackHours = booking.totalHours > 0
+        ? booking.totalHours
+        : booking.duration;
+    final totalHours = fallbackHours > 0
+        ? fallbackHours
+        : serviceItems.fold<int>(
+            0,
+            (sum, item) =>
+                sum +
+                ((item.quantity <= 0 ? 1 : item.quantity) * item.duration),
+          );
+
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
       decoration: BoxDecoration(
@@ -167,7 +279,10 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
               ),
               const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFFEAF4FF),
                   borderRadius: BorderRadius.circular(999),
@@ -184,14 +299,21 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          _buildServiceItem(
-            booking.serviceDisplayName,
-            '${booking.totalHours == 1 ? '1 hour' : '${booking.totalHours} hours'}',
-          ),
-          const SizedBox(height: 10),
-          _buildServiceItem('Deep Cleaning', '1 hour'),
-          const SizedBox(height: 10),
-          _buildServiceItem('Deep Cleaning', '1 hour'),
+          if (serviceItems.isNotEmpty)
+            ...serviceItems.map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _buildServiceItem(
+                  item.serviceName,
+                  item.duration <= 1 ? '1 hour' : '${item.duration} hours',
+                ),
+              ),
+            )
+          else
+            _buildServiceItem(
+              booking.serviceDisplayName,
+              totalHours <= 1 ? '1 hour' : '$totalHours hours',
+            ),
           const SizedBox(height: 10),
           TextButton(
             onPressed: () {},
@@ -222,7 +344,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
                 ),
               ),
               Text(
-                '${booking.totalHours == 1 ? '1 hour' : '${booking.totalHours} hours'}',
+                '${totalHours == 1 ? '1 hour' : '$totalHours hours'}',
                 style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
@@ -241,11 +363,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
       children: [
         const Padding(
           padding: EdgeInsets.only(left: 4),
-          child: Icon(
-            Icons.circle,
-            size: 5,
-            color: Color(0xFF111827),
-          ),
+          child: Icon(Icons.circle, size: 5, color: Color(0xFF111827)),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -309,7 +427,8 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
           const SizedBox(height: 12),
           _buildDetailRow(
             'Time & Duration',
-            value: '${booking.displayTimeLabel} • ${booking.totalHours} hours',
+            value:
+                '${booking.displayTimeLabel} • ${(booking.totalHours > 0 ? booking.totalHours : booking.duration)} hours',
             icon: Icons.access_time_outlined,
           ),
           const SizedBox(height: 12),
@@ -317,10 +436,10 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
             'Service Location',
             value: booking.fullAddress ?? booking.address ?? 'Your Location',
             icon: Icons.location_on_outlined,
-            subtitle: [booking.city, booking.pinCode]
-                .whereType<String>()
-                .where((e) => e.trim().isNotEmpty)
-                .join(', '),
+            subtitle: [
+              booking.city,
+              booking.pinCode,
+            ].whereType<String>().where((e) => e.trim().isNotEmpty).join(', '),
           ),
         ],
       ),
@@ -431,7 +550,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      user?.fullName ?? 'Helper',
+                      helper?.displayName ?? 'Helper',
                       style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w800,
@@ -441,10 +560,14 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        const Icon(Icons.star, size: 14, color: Color(0xFFF59E0B)),
+                        const Icon(
+                          Icons.star,
+                          size: 14,
+                          color: Color(0xFFF59E0B),
+                        ),
                         const SizedBox(width: 4),
                         Text(
-                          '${helper?.rating.toStringAsFixed(1) ?? '0.0'} (250+ reviews)',
+                          '${helper?.rating.toStringAsFixed(1) ?? '0.0'} (${helper?.totalRatings ?? 0}+ reviews)',
                           style: const TextStyle(
                             fontSize: 12,
                             color: Color(0xFF6B7280),
@@ -465,9 +588,12 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
 
   Widget _buildBillDetailsCard(BookingDetailsModal booking) {
     final amountToShow = booking.finalAmount;
-    final taxToShow = booking.tax;
-    final discountAmount = 150;
-    final itemTotal = amountToShow + (discountAmount - taxToShow);
+    final taxToShow = booking.tax < 0 ? booking.tax.abs() : booking.tax;
+    final itemTotal = booking.totalAmount <= 0
+        ? amountToShow
+        : booking.totalAmount;
+    final discountAmount = (itemTotal + taxToShow) - amountToShow;
+    final normalizedDiscount = discountAmount > 0 ? discountAmount : 0;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
@@ -544,7 +670,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
                 ),
               ),
               Text(
-                '-₹$discountAmount',
+                '-₹$normalizedDiscount',
                 style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
@@ -572,8 +698,8 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
               Text(
                 '₹${amountToShow.abs()}',
                 style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
                   color: Color(0xFF111827),
                 ),
               ),

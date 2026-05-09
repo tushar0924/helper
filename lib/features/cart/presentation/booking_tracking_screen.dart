@@ -1,9 +1,14 @@
+import 'dart:async';
+
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import '../../../app/utils/app_toast.dart';
+import '../../auth/application/auth_provider.dart';
 import '../application/cart_provider.dart';
+import '../../../network/api_endpoint.dart';
 import '../modal/booking_details_modal.dart';
 import '../modal/cart_summary_modal.dart';
 
@@ -27,17 +32,47 @@ class BookingTrackingScreen extends ConsumerStatefulWidget {
 }
 
 class _BookingTrackingScreenState extends ConsumerState<BookingTrackingScreen> {
-  late GoogleMapController _mapController;
+  static const LatLng _fallbackLocation = LatLng(26.9124, 75.7873);
 
-  // User location (you can get this from geolocator)
-  final LatLng _userLocation = const LatLng(26.9124, 75.7873);
-  // Partner location (this would come from real-time tracking)
-  final LatLng _partnerLocation = const LatLng(26.9150, 75.7890);
+  BookingDetailsModal? _bookingDetails;
+  BookingArrivalModal? _arrival;
+  io.Socket? _trackingSocket;
+  Timer? _pollingTimer;
+  bool _isLoadingBooking = false;
+  bool _socketListenersAttached = false;
+  bool _isJoiningRoom = false;
+  bool _trackingStopped = false;
 
   @override
+  void initState() {
+    super.initState();
+    _bookingDetails = widget.bookingDetails;
+    _arrival = widget.bookingDetails?.arrival;
+
+    unawaited(_bootstrapTracking());
+  }
+
+  @override
+  void dispose() {
+    _trackingStopped = true;
+    _pollingTimer?.cancel();
+    _trackingSocket?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _bootstrapTracking() async {
+    await _refreshBookingDetails();
+    await _ensureTrackingSocketConnected();
+
+    if (_trackingSocket?.connected != true) {
+      _startPollingFallback();
+    }
+  }
+
   Widget build(BuildContext context) {
     final summary = widget.summary;
-    final bookingDetails = widget.bookingDetails;
+    final bookingDetails = _bookingDetails ?? widget.bookingDetails;
+    final arrival = _arrival ?? bookingDetails?.arrival;
     final partnerName =
         bookingDetails?.helper?.displayName ??
         widget.partnerDetails['name'] ??
@@ -47,46 +82,85 @@ class _BookingTrackingScreenState extends ConsumerState<BookingTrackingScreen> {
         widget.partnerDetails['phone'] ??
         '';
     final bookingOtp = bookingDetails?.otpLabel ?? '----';
+      final bookingLocation = _bookingLocation(bookingDetails);
+      final helperLocation = _helperLocation(arrival);
+      final showMap = _shouldShowMap(arrival, helperLocation);
+      final statusTitle = _trackingTitle(arrival, bookingDetails);
+      final statusMessage = _trackingMessage(arrival, bookingDetails);
+      final etaLabel = _etaLabel(arrival);
 
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: const Color(0xFF0F2741),
         elevation: 0,
-        leading: IconButton(
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(
-            Icons.arrow_back,
-            size: 24,
-            color: Color(0xFF0F172A),
+        toolbarHeight: 70,
+        leadingWidth: 50,
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 8, top: 8),
+          child: IconButton(
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(
+              Icons.arrow_back,
+              size: 24,
+              color: Colors.white,
+            ),
           ),
         ),
-        titleSpacing: 0,
-        title: const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Booking Scheduled',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF111827),
+        titleSpacing: 12,
+        title: Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: const [
+              Text(
+                'Booking Scheduled',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
               ),
-            ),
-            SizedBox(height: 2),
-            Text(
-              'Your booking is confirmed',
-              style: TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
-            ),
-          ],
+              SizedBox(height: 2),
+              Text(
+                'Your booking is confirmed',
+                style: TextStyle(fontSize: 13, color: Color(0xFFD1D5DB)),
+              ),
+            ],
+          ),
         ),
         actions: [
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(
-              Icons.lock_outline,
-              size: 24,
-              color: Color(0xFF0F172A),
+          Padding(
+            padding: const EdgeInsets.only(right: 12, top: 8),
+            child: PopupMenuButton<String>(
+              onSelected: (value) {
+                if (value == 'help') {
+                  AppToast.success('Help & Support - Coming Soon');
+                }
+              },
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                const PopupMenuItem<String>(
+                  value: 'help',
+                  child: Row(
+                    children: [
+                      Icon(Icons.help_outline, size: 18, color: Color(0xFF111827)),
+                      SizedBox(width: 12),
+                      Text(
+                        'Help & Support',
+                        style: TextStyle(fontSize: 14, color: Color(0xFF111827)),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              child: const Icon(
+                Icons.more_vert,
+                size: 24,
+                color: Colors.white,
+              ),
             ),
           ),
         ],
@@ -94,19 +168,82 @@ class _BookingTrackingScreenState extends ConsumerState<BookingTrackingScreen> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // Map Section
-            _MapSection(
-              userLocation: _userLocation,
-              partnerLocation: _partnerLocation,
-              onMapCreated: (controller) => _mapController = controller,
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE5E7EB)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      statusTitle,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      statusMessage,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF475569),
+                      ),
+                    ),
+                    if (etaLabel.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        etaLabel,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF0B6DD4),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
             const SizedBox(height: 14),
 
-            // Contact Buttons Section
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _ContactButtonsSection(partnerPhone: partnerPhone),
-            ),
+            if (showMap && bookingLocation != null && helperLocation != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _MapSection(
+                  userLocation: bookingLocation,
+                  partnerLocation: helperLocation,
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE5E7EB)),
+                  ),
+                  child: Text(
+                    _mapHint(arrival),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFF475569),
+                    ),
+                  ),
+                ),
+              ),
+
             const SizedBox(height: 14),
 
             // Partner Card
@@ -130,6 +267,13 @@ class _BookingTrackingScreenState extends ConsumerState<BookingTrackingScreen> {
             ),
             const SizedBox(height: 14),
 
+            // Service Details
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _ServiceDetailsCard(summary: summary),
+            ),
+            const SizedBox(height: 14),
+
             // Booking Details
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -137,13 +281,6 @@ class _BookingTrackingScreenState extends ConsumerState<BookingTrackingScreen> {
                 summary: summary,
                 bookingDetails: bookingDetails,
               ),
-            ),
-            const SizedBox(height: 14),
-
-            // Service Details
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _ServiceDetailsCard(summary: summary),
             ),
             const SizedBox(height: 14),
 
@@ -157,6 +294,444 @@ class _BookingTrackingScreenState extends ConsumerState<BookingTrackingScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _refreshBookingDetails() async {
+    if (_isLoadingBooking || widget.bookingId <= 0) {
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _isLoadingBooking = true;
+      });
+    } else {
+      _isLoadingBooking = true;
+    }
+
+    try {
+      final repository = ref.read(cartRepositoryProvider);
+      final bookingDetails = await repository.getUserBooking(
+        bookingId: widget.bookingId,
+      );
+
+      if (mounted) {
+        setState(() {
+          _bookingDetails = bookingDetails;
+          _arrival = bookingDetails.arrival;
+        });
+      } else {
+        _bookingDetails = bookingDetails;
+        _arrival = bookingDetails.arrival;
+      }
+
+      _syncTrackingState(bookingDetails);
+    } catch (error) {
+      debugPrint('[TRACKING] Failed to load booking details: $error');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingBooking = false;
+        });
+      } else {
+        _isLoadingBooking = false;
+      }
+    }
+  }
+
+  Future<void> _ensureTrackingSocketConnected() async {
+    if (_trackingSocket != null) {
+      if (!(_trackingSocket!.connected)) {
+        _trackingSocket!.connect();
+      }
+      return;
+    }
+
+    final token = await ref.read(sessionManagerProvider).accessToken;
+    if (token == null || token.trim().isEmpty) {
+      debugPrint('[TRACKING][SOCKET] No auth token available');
+      return;
+    }
+
+    _trackingSocket = io.io(
+      ApiEndpoint.socketUrl,
+      io.OptionBuilder()
+          .setTransports(<String>['websocket', 'polling'])
+          .setPath('/socket.io')
+          .enableForceNew()
+          .disableReconnection()
+          .setAuth(<String, dynamic>{'token': token})
+          .setExtraHeaders(<String, dynamic>{'Authorization': 'Bearer $token'})
+          .build(),
+    );
+
+    if (!_socketListenersAttached) {
+      _registerTrackingSocketListeners();
+      _socketListenersAttached = true;
+    }
+
+    _trackingSocket!.connect();
+    debugPrint('[TRACKING][SOCKET] Socket connected for booking ${widget.bookingId}');
+  }
+
+  void _registerTrackingSocketListeners() {
+    final socket = _trackingSocket;
+    if (socket == null) {
+      return;
+    }
+
+    socket.onConnect((_) {
+      debugPrint('[TRACKING][SOCKET] Connected');
+      _isJoiningRoom = false;
+      _pollingTimer?.cancel();
+      _joinBookingRoom();
+    });
+
+    socket.onConnectError((error) {
+      debugPrint('[TRACKING][SOCKET] Connect error: $error');
+      _startPollingFallback();
+    });
+
+    socket.onError((error) {
+      debugPrint('[TRACKING][SOCKET] Socket error: $error');
+      _startPollingFallback();
+    });
+
+    socket.onDisconnect((reason) {
+      debugPrint('[TRACKING][SOCKET] Disconnected: $reason');
+      if (!_trackingStopped) {
+        _startPollingFallback();
+      }
+    });
+
+    const trackingEvents = <String>[
+      'booking:location_update',
+      'booking:arriving',
+      'booking:delayed',
+      'booking:arrived',
+    ];
+
+    for (final eventName in trackingEvents) {
+      socket.on(eventName, _onTrackingEvent);
+    }
+
+    debugPrint('[TRACKING][SOCKET] Socket listeners registered');
+  }
+
+  void _joinBookingRoom() {
+    final socket = _trackingSocket;
+    if (_trackingStopped ||
+        socket == null ||
+        socket.connected != true ||
+        _isJoiningRoom) {
+      return;
+    }
+
+    _isJoiningRoom = true;
+    final room = 'booking:${widget.bookingId}';
+    final payload = <String, dynamic>{
+      'bookingId': widget.bookingId,
+      'room': room,
+    };
+
+    socket.emit('booking:join', payload);
+    socket.emit('booking_join', payload);
+    socket.emit('join_room', payload);
+
+    debugPrint('[TRACKING][SOCKET] Joined room: $room');
+  }
+
+  Future<void> _onTrackingEvent(dynamic payload) async {
+    final map = _normalizeMap(payload);
+    if (map == null) {
+      return;
+    }
+
+    debugPrint('[TRACKING][SOCKET] Event payload: $map');
+
+    final bookingId = _toInt(
+      map['bookingId'] ??
+          map['id'] ??
+          (map['booking'] is Map<String, dynamic>
+              ? (map['booking'] as Map<String, dynamic>)['id']
+              : null),
+    );
+
+    if (bookingId != null && bookingId != widget.bookingId) {
+      return;
+    }
+
+    final bookingMap = _extractBookingMap(map);
+    if (bookingMap != null) {
+      final bookingDetails = BookingDetailsModal.fromJson(bookingMap);
+      if (mounted) {
+        setState(() {
+          _bookingDetails = bookingDetails;
+          _arrival = bookingDetails.arrival;
+        });
+      } else {
+        _bookingDetails = bookingDetails;
+        _arrival = bookingDetails.arrival;
+      }
+      _syncTrackingState(bookingDetails);
+      return;
+    }
+
+    final arrivalMap = _extractArrivalMap(map);
+    if (arrivalMap != null) {
+      final currentArrival = _arrival;
+      final arrival = BookingArrivalModal.fromJson(<String, dynamic>{
+        'trackingEnabled': arrivalMap['trackingEnabled'] ?? currentArrival?.trackingEnabled,
+        'arrivalState': arrivalMap['arrivalState'] ?? currentArrival?.arrivalState,
+        'etaSeconds': arrivalMap['etaSeconds'] ?? currentArrival?.etaSeconds,
+        'helperLocation': arrivalMap['helperLocation'] ?? currentArrival?.helperLocation,
+        'isLocationStale': arrivalMap['isLocationStale'] ?? currentArrival?.isLocationStale,
+      });
+
+      if (mounted) {
+        setState(() {
+          _arrival = arrival;
+        });
+      } else {
+        _arrival = arrival;
+      }
+    }
+  }
+
+  void _syncTrackingState(BookingDetailsModal bookingDetails) {
+    if (_isTerminalStatus(bookingDetails.status)) {
+      _trackingStopped = true;
+      _pollingTimer?.cancel();
+      _trackingSocket?.disconnect();
+    }
+  }
+
+  void _startPollingFallback() {
+    if (_trackingStopped || _pollingTimer != null) {
+      return;
+    }
+
+    _pollingTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+      if (!mounted || widget.bookingId <= 0) {
+        _pollingTimer?.cancel();
+        _pollingTimer = null;
+        return;
+      }
+
+      if (_trackingSocket?.connected == true) {
+        return;
+      }
+
+      await _refreshBookingDetails();
+    });
+  }
+
+  Map<String, dynamic>? _extractBookingMap(Map<String, dynamic> map) {
+    final candidates = <Object?>[
+      map['booking'],
+      map['data'],
+    ];
+
+    for (final candidate in candidates) {
+      final normalized = _normalizeMap(candidate);
+      if (normalized != null && normalized.containsKey('arrival')) {
+        return normalized;
+      }
+    }
+
+    if (map.containsKey('status') || map.containsKey('arrival')) {
+      return map;
+    }
+
+    return null;
+  }
+
+  Map<String, dynamic>? _extractArrivalMap(Map<String, dynamic> map) {
+    final candidates = <Object?>[
+      map['arrival'],
+      map['data'] is Map ? (map['data'] as Map)['arrival'] : null,
+    ];
+
+    for (final candidate in candidates) {
+      final normalized = _normalizeMap(candidate);
+      if (normalized != null) {
+        return normalized;
+      }
+    }
+
+    if (map.containsKey('trackingEnabled') ||
+        map.containsKey('arrivalState') ||
+        map.containsKey('etaSeconds') ||
+        map.containsKey('helperLocation')) {
+      return map;
+    }
+
+    return null;
+  }
+
+  Map<String, dynamic>? _normalizeMap(dynamic payload) {
+    if (payload is Map<String, dynamic>) {
+      return payload;
+    }
+    if (payload is Map) {
+      return payload.map((key, value) => MapEntry(key.toString(), value));
+    }
+    return null;
+  }
+
+  int? _toInt(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is String) {
+      return int.tryParse(value);
+    }
+    if (value is double) {
+      return value.toInt();
+    }
+    return null;
+  }
+
+  bool _shouldShowMap(BookingArrivalModal? arrival, LatLng? helperLocation) {
+    if (arrival == null || !arrival.trackingEnabled || helperLocation == null) {
+      return false;
+    }
+
+    if (arrival.arrivalState == 'ARRIVED') {
+      return true;
+    }
+
+    final etaSeconds = arrival.etaSeconds;
+    if (etaSeconds == null) {
+      return false;
+    }
+
+    return etaSeconds <= 1800;
+  }
+
+  LatLng? _bookingLocation(BookingDetailsModal? bookingDetails) {
+    if (bookingDetails == null) {
+      return null;
+    }
+
+    final lat = bookingDetails.latitude;
+    final lng = bookingDetails.longitude;
+    if (lat == 0 || lng == 0) {
+      return _fallbackLocation;
+    }
+
+    return LatLng(lat, lng);
+  }
+
+  LatLng? _helperLocation(BookingArrivalModal? arrival) {
+    final helperLocation = arrival?.helperLocation;
+    if (helperLocation == null || !helperLocation.isValid) {
+      return null;
+    }
+
+    return LatLng(helperLocation.lat, helperLocation.lng);
+  }
+
+  String _trackingTitle(BookingArrivalModal? arrival, BookingDetailsModal? details) {
+    if (details == null) {
+      return 'Tracking unavailable';
+    }
+
+    if (arrival == null) {
+      return 'Tracking OFF';
+    }
+
+    if (!arrival.trackingEnabled) {
+      return 'Tracking OFF';
+    }
+
+    switch (arrival.arrivalState) {
+      case 'ARRIVING':
+        return 'Helper is on the way';
+      case 'DELAYED':
+        return 'Running late';
+      case 'ARRIVED':
+        return 'Partner arrived';
+      default:
+        return 'Live tracking';
+    }
+  }
+
+  String _trackingMessage(BookingArrivalModal? arrival, BookingDetailsModal? details) {
+    if (details == null) {
+      return 'Loading booking details...';
+    }
+
+    if (arrival == null) {
+      return 'Live tracking will appear only when the booking becomes trackable.';
+    }
+
+    if (!arrival.trackingEnabled) {
+      return 'The backend has disabled tracking for this booking.';
+    }
+
+    switch (arrival.arrivalState) {
+      case 'ARRIVING':
+        return 'Helper is approaching. Live map will appear once they are within 30 minutes.';
+      case 'DELAYED':
+        return 'Helper is delayed. Keep an eye on the live map and ETA updates.';
+      case 'ARRIVED':
+        return 'Partner has arrived at the location.';
+      default:
+        return 'Tracking is enabled. Live updates will appear from the backend.';
+    }
+  }
+
+  String _etaLabel(BookingArrivalModal? arrival) {
+    final etaSeconds = arrival?.etaSeconds;
+    if (etaSeconds == null) {
+      return '';
+    }
+
+    final minutes = (etaSeconds / 60).ceil();
+    if (minutes <= 1) {
+      return 'ETA: less than 1 minute';
+    }
+
+    if (minutes < 60) {
+      return 'ETA: $minutes minutes';
+    }
+
+    final hours = minutes ~/ 60;
+    final remainingMinutes = minutes % 60;
+    if (remainingMinutes == 0) {
+      return 'ETA: $hours hour${hours == 1 ? '' : 's'}';
+    }
+
+    return 'ETA: $hours hour${hours == 1 ? '' : 's'} $remainingMinutes min';
+  }
+
+  String _mapHint(BookingArrivalModal? arrival) {
+    if (arrival == null) {
+      return 'Map will appear once tracking data is available.';
+    }
+
+    if (!arrival.trackingEnabled) {
+      return 'Tracking is disabled for this booking.';
+    }
+
+    if (arrival.arrivalState == 'ARRIVED') {
+      return 'Helper has arrived. The live map is still available for reference.';
+    }
+
+    final etaSeconds = arrival.etaSeconds;
+    if (etaSeconds != null && etaSeconds > 1800) {
+      return 'Live map will show when the helper is within 30 minutes of arrival.';
+    }
+
+    return 'Waiting for live location updates from the backend.';
+  }
+
+  bool _isTerminalStatus(String status) {
+    final normalized = status.toUpperCase();
+    return normalized.contains('COMPLETE') ||
+        normalized.contains('CANCELLED') ||
+        normalized.contains('CANCELED');
   }
 
   void _onCancelBookingTap() {
@@ -433,30 +1008,28 @@ class _MapSection extends StatelessWidget {
   const _MapSection({
     required this.userLocation,
     required this.partnerLocation,
-    required this.onMapCreated,
   });
 
   final LatLng userLocation;
   final LatLng partnerLocation;
-  final ValueChanged<GoogleMapController> onMapCreated;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Arrive in timing
+        // Live status
         Container(
           padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
           decoration: BoxDecoration(
-            color: const Color(0xFFFEF3C7),
+            color: const Color(0xFFE0F2FE),
             borderRadius: BorderRadius.circular(20),
           ),
           child: const Text(
-            'Arrive in 15 mins',
+            'Live map active',
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF92400E),
+              color: Color(0xFF0369A1),
             ),
           ),
         ),
@@ -472,8 +1045,7 @@ class _MapSection extends StatelessWidget {
                 target: userLocation,
                 zoom: 15,
               ),
-              onMapCreated: onMapCreated,
-              markers: {
+              markers: <Marker>{
                 Marker(
                   markerId: const MarkerId('user'),
                   position: userLocation,
@@ -485,7 +1057,7 @@ class _MapSection extends StatelessWidget {
                   infoWindow: const InfoWindow(title: 'Partner Location'),
                 ),
               },
-              polylines: {
+              polylines: <Polyline>{
                 Polyline(
                   polylineId: const PolylineId('route'),
                   points: [userLocation, partnerLocation],
@@ -571,59 +1143,154 @@ class _PartnerInfoCard extends StatelessWidget {
     final experience = partnerDetails['experience'] ?? '5+ years experience';
 
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xFFE5E7EB)),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           CircleAvatar(
-            radius: 28,
+            radius: 22,
             backgroundColor: const Color(0xFFE5E7EB),
-            child: const Icon(Icons.person, size: 32, color: Color(0xFF6B7280)),
+            child: const Icon(Icons.person, size: 26, color: Color(0xFF6B7280)),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 16,
+                    fontSize: 15,
                     fontWeight: FontWeight.w700,
                     color: Color(0xFF111827),
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 3),
+                Row(
+                  children: [
+                    const Icon(Icons.star, size: 14, color: Color(0xFFF59E0B)),
+                    const SizedBox(width: 4),
+                    Text(
+                      rating.toString(),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF111827),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
                 Text(
-                  '$rating • $experience',
+                  experience,
                   style: const TextStyle(
-                    fontSize: 12,
+                    fontSize: 11,
                     color: Color(0xFF6B7280),
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 3),
                 Row(
                   children: [
+                    Container(
+                      width: 14,
+                      height: 14,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF10B981),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.check,
+                        size: 10,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(width: 5),
                     const Icon(
                       Icons.verified,
-                      size: 14,
+                      size: 12,
                       color: Color(0xFF10B981),
                     ),
                     const SizedBox(width: 4),
                     const Text(
                       'Police Verified & Trained',
-                      style: TextStyle(fontSize: 11, color: Color(0xFF10B981)),
+                      style: TextStyle(fontSize: 10.5, color: Color(0xFF10B981)),
                     ),
                   ],
                 ),
               ],
             ),
           ),
+          const SizedBox(width: 8),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _PartnerActionButton(
+                    icon: Icons.call,
+                    backgroundColor: const Color(0xFF111827),
+                    iconColor: Colors.white,
+                    onTap: () => AppToast.success('Call feature coming soon'),
+                  ),
+                  const SizedBox(width: 8),
+                  _PartnerActionButton(
+                    icon: Icons.message,
+                    backgroundColor: const Color(0xFFFB923C),
+                    iconColor: Colors.white,
+                    onTap: () => AppToast.success('Chat feature coming soon'),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _PartnerActionButton extends StatelessWidget {
+  const _PartnerActionButton({
+    required this.icon,
+    required this.backgroundColor,
+    required this.iconColor,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final Color backgroundColor;
+  final Color iconColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: backgroundColor,
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x14000000),
+              blurRadius: 6,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Icon(icon, size: 18, color: iconColor),
       ),
     );
   }
@@ -718,14 +1385,12 @@ class _ImportantInstructionsCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          _InstructionRow(
-            icon: Icons.check_circle,
+          const _InstructionRow(
             text: 'Verify the OTP before the helper starts working',
           ),
-          const SizedBox(height: 10),
-          _InstructionRow(
-            icon: Icons.check_circle,
-            text: 'Enjoy 15 min extra service time free',
+          const SizedBox(height: 8),
+          const _InstructionRow(
+            text: 'Enjoy 10 min extra service free',
           ),
         ],
       ),
@@ -734,9 +1399,8 @@ class _ImportantInstructionsCard extends StatelessWidget {
 }
 
 class _InstructionRow extends StatelessWidget {
-  const _InstructionRow({required this.icon, required this.text});
+  const _InstructionRow({required this.text});
 
-  final IconData icon;
   final String text;
 
   @override
@@ -744,12 +1408,15 @@ class _InstructionRow extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 20, color: const Color(0xFF16A34A)),
+        const Text(
+          '•',
+          style: TextStyle(fontSize: 16, color: Color(0xFFEA580C)),
+        ),
         const SizedBox(width: 10),
         Expanded(
           child: Text(
             text,
-            style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+            style: const TextStyle(fontSize: 13, color: Color(0xFF475569)),
           ),
         ),
       ],
@@ -999,7 +1666,7 @@ class _CancellationPolicyCard extends StatelessWidget {
           _PolicyItem(text: '(100% applicable)'),
           const SizedBox(height: 12),
           SizedBox(
-            width: 120,
+            width: double.infinity,
             height: 36,
             child: OutlinedButton(
               onPressed: onCancelPressed,
@@ -1009,13 +1676,17 @@ class _CancellationPolicyCard extends StatelessWidget {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
               ),
-              child: const Text(
-                'Cancel Booking',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFFEF4444),
+              child: const FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  'Cancel Booking',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFFEF4444),
+                  ),
                 ),
               ),
             ),

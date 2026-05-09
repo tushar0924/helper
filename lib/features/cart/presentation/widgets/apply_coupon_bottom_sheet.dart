@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
@@ -21,6 +23,7 @@ class _ApplyCouponScreenState extends ConsumerState<ApplyCouponScreen> {
   String? _appliedCouponCode;
   String? _applyingCouponCode;
   String? _removingCouponCode;
+  bool _isApplyingCouponSheetVisible = false;
 
   @override
   void initState() {
@@ -41,6 +44,10 @@ class _ApplyCouponScreenState extends ConsumerState<ApplyCouponScreen> {
       _applyingCouponCode = coupon.code;
     });
 
+    unawaited(_showProcessingCouponSheet(title: 'Applying Coupon'));
+
+    var didSucceed = false;
+
     try {
       await ref
           .read(cartRepositoryProvider)
@@ -56,18 +63,34 @@ class _ApplyCouponScreenState extends ConsumerState<ApplyCouponScreen> {
 
       ref.invalidate(appliedCouponsProvider);
       await ref.read(cartProvider.notifier).loadSummary(forceRefresh: true);
+
+      didSucceed = true;
+      _dismissApplyingCouponSheet();
+
+      if (!mounted) {
+        return;
+      }
+
+      await Future<void>.delayed(const Duration(milliseconds: 180));
+      if (mounted) {
+        Navigator.of(context).pop(coupon.code);
+      }
     } catch (_) {
       if (!mounted) {
         return;
       }
+
+      _dismissApplyingCouponSheet();
     } finally {
       if (!mounted) {
         return;
       }
 
-      setState(() {
-        _applyingCouponCode = null;
-      });
+      if (!didSucceed) {
+        setState(() {
+          _applyingCouponCode = null;
+        });
+      }
     }
   }
 
@@ -79,6 +102,8 @@ class _ApplyCouponScreenState extends ConsumerState<ApplyCouponScreen> {
     setState(() {
       _removingCouponCode = coupon.code;
     });
+
+    unawaited(_showProcessingCouponSheet(title: 'Removing Coupon'));
 
     try {
       await ref
@@ -98,10 +123,14 @@ class _ApplyCouponScreenState extends ConsumerState<ApplyCouponScreen> {
       ref.invalidate(appliedCouponsProvider);
       ref.invalidate(availableCouponsProvider);
       await ref.read(cartProvider.notifier).loadSummary(forceRefresh: true);
+
+      _dismissApplyingCouponSheet();
     } catch (_) {
       if (!mounted) {
         return;
       }
+
+      _dismissApplyingCouponSheet();
     } finally {
       if (!mounted) {
         return;
@@ -113,10 +142,14 @@ class _ApplyCouponScreenState extends ConsumerState<ApplyCouponScreen> {
     }
   }
 
-  Future<bool> _applyManualCoupon(String couponCode) async {
+  Future<String?> _applyManualCoupon(String couponCode) async {
     if (couponCode.isEmpty) {
-      return false;
+      return null;
     }
+
+    unawaited(_showProcessingCouponSheet(title: 'Applying Coupon'));
+
+    var didSucceed = false;
 
     try {
       await ref
@@ -124,7 +157,7 @@ class _ApplyCouponScreenState extends ConsumerState<ApplyCouponScreen> {
           .applyCoupon(couponCode: couponCode);
 
       if (!mounted) {
-        return false;
+        return null;
       }
 
       setState(() {
@@ -134,14 +167,72 @@ class _ApplyCouponScreenState extends ConsumerState<ApplyCouponScreen> {
       ref.invalidate(appliedCouponsProvider);
       ref.invalidate(availableCouponsProvider);
       await ref.read(cartProvider.notifier).loadSummary(forceRefresh: true);
-      return true;
-    } catch (error) {
+
+      didSucceed = true;
+      _dismissApplyingCouponSheet();
+
       if (!mounted) {
-        return false;
+        return couponCode;
       }
 
+      await Future<void>.delayed(const Duration(milliseconds: 180));
+      if (mounted) {
+        Navigator.of(context).pop(couponCode);
+      }
+
+      return couponCode;
+    } catch (error) {
+      if (!mounted) {
+        return null;
+      }
+
+      _dismissApplyingCouponSheet();
       _showCouponErrorDialog('Oops coupon does not exist.');
-      return false;
+      return null;
+    } finally {
+      if (mounted && !didSucceed) {
+        setState(() {
+          _appliedCouponCode = _appliedCouponCode;
+        });
+      }
+    }
+  }
+
+  Future<void> _showProcessingCouponSheet({required String title}) async {
+    if (!mounted || _isApplyingCouponSheetVisible) {
+      return;
+    }
+
+    _isApplyingCouponSheetVisible = true;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      isDismissible: false,
+      enableDrag: false,
+      backgroundColor: Colors.transparent,
+      barrierColor: const Color(0x66000000),
+      builder: (_) => _ApplyingCouponBottomSheet(title: title),
+    );
+
+    if (!mounted) {
+      _isApplyingCouponSheetVisible = false;
+      return;
+    }
+
+    setState(() {
+      _isApplyingCouponSheetVisible = false;
+    });
+  }
+
+  void _dismissApplyingCouponSheet() {
+    if (!_isApplyingCouponSheetVisible) {
+      return;
+    }
+
+    final navigator = Navigator.of(context, rootNavigator: true);
+    if (navigator.canPop()) {
+      navigator.pop();
     }
   }
 
@@ -267,7 +358,7 @@ class _CartTotalHeader extends StatelessWidget {
 class _CouponCodeInputRow extends StatefulWidget {
   const _CouponCodeInputRow({required this.onManualApply});
 
-  final Future<bool> Function(String) onManualApply;
+  final Future<String?> Function(String) onManualApply;
 
   @override
   State<_CouponCodeInputRow> createState() => _CouponCodeInputRowState();
@@ -297,8 +388,8 @@ class _CouponCodeInputRowState extends State<_CouponCodeInputRow> {
       });
 
       try {
-        final success = await widget.onManualApply(code);
-        if (success && mounted) {
+        final appliedCode = await widget.onManualApply(code);
+        if (appliedCode != null && mounted) {
           _controller.clear();
         }
       } finally {
@@ -784,6 +875,64 @@ class _CouponErrorDialog extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                     color: Colors.white,
                   ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ApplyingCouponBottomSheet extends StatelessWidget {
+  const _ApplyingCouponBottomSheet({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        width: double.infinity,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE5E7EB),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF111827),
+              ),
+            ),
+            const SizedBox(height: 14),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: const LinearProgressIndicator(
+                minHeight: 4,
+                backgroundColor: Color(0xFFE5E7EB),
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  Color(0xFF0F172A),
                 ),
               ),
             ),

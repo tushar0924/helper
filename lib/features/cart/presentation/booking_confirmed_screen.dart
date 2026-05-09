@@ -13,6 +13,8 @@ import '../../../network/api_endpoint.dart';
 import '../application/cart_provider.dart';
 import '../modal/booking_details_modal.dart';
 import '../modal/cart_summary_modal.dart';
+import '../modal/payment_order_response_modal.dart';
+import 'booking_success_screen.dart';
 import 'booking_tracking_screen.dart';
 
 class BookingConfirmedScreen extends ConsumerStatefulWidget {
@@ -44,7 +46,7 @@ class _BookingConfirmedScreenState
   bool _paymentCompleted = false;
   bool _isLoadingBookingDetails = false;
   bool _isConfirmingPayment = false;
-  
+
   // Socket related variables
   io.Socket? _bookingSocket;
   Timer? _pollingTimer;
@@ -79,7 +81,7 @@ class _BookingConfirmedScreenState
     _razorpay.on(Razorpay.EVENT_PAYMENT_SUCCESS, _handlePaymentSuccess);
     _razorpay.on(Razorpay.EVENT_PAYMENT_ERROR, _handlePaymentError);
     _razorpay.on(Razorpay.EVENT_EXTERNAL_WALLET, _handleExternalWallet);
-    
+
     // Initialize socket connection
     unawaited(_ensureBookingSocketConnected());
   }
@@ -122,14 +124,10 @@ class _BookingConfirmedScreenState
 
     setState(() {
       _isPaying = false;
+      _isConfirmingPayment = false;
     });
 
-    final message = response.message?.trim();
-    AppToast.error(
-      message == null || message.isEmpty
-          ? 'Payment failed. Please try again.'
-          : message,
-    );
+    AppToast.error(_paymentFailureMessage(response));
   }
 
   Future<BookingDetailsModal?> _loadUserBookingDetails() async {
@@ -185,11 +183,11 @@ class _BookingConfirmedScreenState
       _isPaying = false;
     });
 
-    final walletName = response.walletName?.trim();
+    final walletName = _formatWalletName(response.walletName?.trim() ?? '');
     AppToast.success(
-      walletName == null || walletName.isEmpty
+      walletName.isEmpty
           ? 'External wallet selected'
-          : 'External wallet selected: $walletName',
+          : 'Opening $walletName for payment',
     );
   }
 
@@ -321,7 +319,7 @@ class _BookingConfirmedScreenState
   // POLLING (Fallback mechanism)
   void _startPollingForBookingConfirmation() {
     debugPrint('[POLLING] Starting polling for booking confirmation...');
-    
+
     _pollingTimer?.cancel(); // Cancel any existing timer
     _pollingTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
       if (!_isConfirmingPayment || widget.bookingId <= 0) {
@@ -335,17 +333,13 @@ class _BookingConfirmedScreenState
           bookingId: widget.bookingId,
         );
 
-        debugPrint(
-          '[POLLING] Booking status: ${bookingDetails?.status}',
-        );
+        debugPrint('[POLLING] Booking status: ${bookingDetails?.status}');
 
         if (bookingDetails?.status == 'CONFIRMED' ||
             bookingDetails?.status == 'ACCEPTED' ||
             bookingDetails?.statusLabel?.toUpperCase().contains('CONFIRMED') ==
                 true) {
-          debugPrint(
-            '[POLLING] ✓ Booking confirmed via polling',
-          );
+          debugPrint('[POLLING] ✓ Booking confirmed via polling');
           _pollingTimer?.cancel();
 
           if (mounted && _isConfirmingPayment) {
@@ -373,19 +367,15 @@ class _BookingConfirmedScreenState
       _paymentCompleted = true;
     });
 
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-
-    if (mounted) {
+    if (mounted && (_bookingDetails != null)) {
+      // Navigate to success screen which auto-navigates to OTP after 5 seconds
       Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(
-          builder: (_) => BookingTrackingScreen(
+          builder: (_) => BookingSuccessScreen(
             summary: widget.summary,
             bookingId: widget.bookingId,
-            bookingDetails: _bookingDetails ?? widget.bookingDetails,
-            partnerDetails:
-                (_bookingDetails ?? widget.bookingDetails)
-                    ?.toPartnerDetailsMap() ??
-                widget.partnerDetails,
+            bookingDetails: _bookingDetails!,
+            partnerDetails: _bookingDetails!.toPartnerDetailsMap(),
           ),
         ),
       );
@@ -469,17 +459,11 @@ class _BookingConfirmedScreenState
         amount: widget.summary.pricing.total,
       );
 
-      final options = <String, Object>{
-        'key': order.keyId.isEmpty ? _razorpayFallbackKey : order.keyId,
-        'order_id': order.orderId,
-        'amount': order.amount,
-        'currency': order.currency,
-        'name': 'Zynexx',
-        'description': 'Booking #${widget.bookingId}',
-        'retry': <String, Object>{'enabled': true, 'max_count': 1},
-        'send_sms_hash': true,
-        'prefill': <String, Object>{'contact': '', 'email': ''},
-      };
+      if (order.orderId.trim().isEmpty || order.amount <= 0) {
+        throw StateError('Unable to start Razorpay checkout');
+      }
+
+      final options = await _buildCheckoutOptions(order);
 
       _razorpay.open(options);
     } catch (error) {
@@ -494,6 +478,93 @@ class _BookingConfirmedScreenState
         }
       }
     }
+  }
+
+  Future<Map<String, Object>> _buildCheckoutOptions(
+    PaymentOrderResponseModal order,
+  ) async {
+    final sessionData = await ref.read(sessionManagerProvider).getSessionData();
+    final customerName = _firstNonEmpty(<String?>[
+      widget.bookingDetails?.customer?.fullName,
+      sessionData['fullName']?.toString(),
+      'Customer',
+    ]);
+    final customerPhone = _firstNonEmpty(<String?>[
+      widget.bookingDetails?.customer?.phone,
+      sessionData['phone']?.toString(),
+    ]);
+
+    return <String, Object>{
+      'key': order.keyId.isEmpty ? _razorpayFallbackKey : order.keyId,
+      'order_id': order.orderId,
+      'amount': order.amount,
+      'currency': order.currency,
+      'name': 'Zynexx',
+      'description': 'Booking #${widget.bookingId}',
+      'retry': <String, Object>{'enabled': true, 'max_count': 1},
+      'send_sms_hash': true,
+      'theme': <String, Object>{'color': '#0B1F3A'},
+      'external': <String, Object>{
+        'wallets': <String>['paytm'],
+      },
+      'disable_redesign_v15': false,
+      'experiments.upi_turbo': true,
+      'ep':
+          'https://api-web-turbo-upi.ext.dev.razorpay.in/test/checkout.html?branch=feat/turbo/tpv',
+      'prefill': <String, Object>{
+        if (customerName.isNotEmpty) 'name': customerName,
+        if (customerPhone.isNotEmpty) 'contact': customerPhone,
+      },
+      'notes': <String, Object>{
+        'booking_id': widget.bookingId.toString(),
+        'payment_id': order.paymentId.toString(),
+        'amount': order.amount.toString(),
+      },
+    };
+  }
+
+  String _paymentFailureMessage(PaymentFailureResponse response) {
+    switch (response.code) {
+      case Razorpay.PAYMENT_CANCELLED:
+        return 'Payment cancelled';
+      case Razorpay.NETWORK_ERROR:
+        return 'Network issue. Please try again.';
+      case Razorpay.INVALID_OPTIONS:
+        return 'Payment configuration error. Please try again.';
+      case Razorpay.TLS_ERROR:
+        return 'Your device does not support secure payment checkout.';
+    }
+
+    final message = response.message?.trim();
+    if (message != null && message.isNotEmpty) {
+      return message;
+    }
+
+    return 'Payment failed. Please try again.';
+  }
+
+  String _formatWalletName(String walletName) {
+    final normalized = walletName.toLowerCase();
+    if (normalized == 'gpay') {
+      return 'Google Pay';
+    }
+    if (normalized == 'phonepe') {
+      return 'PhonePe';
+    }
+    if (normalized == 'paytm') {
+      return 'Paytm';
+    }
+    return walletName;
+  }
+
+  String _firstNonEmpty(List<String?> values) {
+    for (final value in values) {
+      final normalized = value?.trim() ?? '';
+      if (normalized.isNotEmpty) {
+        return normalized;
+      }
+    }
+    return '';
   }
 
   void _onCancelBookingTap() {
@@ -652,7 +723,8 @@ class _BookingConfirmedScreenState
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
                                     border: Border.all(
-                                      color: selectedReason == reasonCodes[index]
+                                      color:
+                                          selectedReason == reasonCodes[index]
                                           ? const Color(0xFF0B1F3A)
                                           : const Color(0xFFD1D5DB),
                                       width: 2,
@@ -904,9 +976,9 @@ class _BookingConfirmedScreenState
         return false;
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFFF1F3F6),
+        backgroundColor: Colors.white,
         appBar: AppBar(
-          backgroundColor: Colors.white,
+          backgroundColor: const Color(0xFF0F2741),
           elevation: 0,
           leading: _paymentCompleted || _isConfirmingPayment
               ? null
@@ -914,8 +986,8 @@ class _BookingConfirmedScreenState
                   onPressed: _handleBackPressed,
                   icon: const Icon(
                     Icons.arrow_back,
-                    size: 24,
-                    color: Color(0xFF0F172A),
+                    size: 22,
+                    color: Colors.white,
                   ),
                 ),
           titleSpacing: 0,
@@ -929,27 +1001,31 @@ class _BookingConfirmedScreenState
                     ? 'Booking Scheduled'
                     : 'Booking Confirmed',
                 style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF111827),
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
                 ),
               ),
-              SizedBox(height: 2),
+              const SizedBox(height: 3),
               Text(
                 _isConfirmingPayment
                     ? 'Please wait while we confirm your payment'
                     : _paymentCompleted
-                    ? 'Your booking is confirmed'
+                    ? '1 service has been assigned to your service'
                     : bookingDetails != null
-                    ? 'Booking #${bookingDetails.id} • $statusLabel'
-                    : 'A partner has been assigned to your service',
-                style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+                    ? '1 service has been assigned to your service'
+                    : '1 service has been assigned to your service',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w400,
+                  color: Color(0xFFC9D6E3),
+                ),
               ),
             ],
           ),
         ),
         body: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(13, 13, 13, 15),
+          padding: const EdgeInsets.fromLTRB(13, 16, 13, 15),
           child: Column(
             children: [
               if (_isConfirmingPayment)
@@ -963,8 +1039,6 @@ class _BookingConfirmedScreenState
                 bookingDetails: bookingDetails,
                 fallbackPartnerDetails: widget.partnerDetails,
               ),
-              const SizedBox(height: 10),
-              _ImportantInstructionsCard(bookingDetails: bookingDetails),
               const SizedBox(height: 10),
               _BookingDetailsCard(
                 summary: summary,
@@ -1074,9 +1148,7 @@ class _ConfirmingPaymentCard extends StatelessWidget {
             ),
             child: const CircularProgressIndicator(
               strokeWidth: 3,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                Colors.white,
-              ),
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
             ),
           ),
           const SizedBox(height: 16),
@@ -1941,11 +2013,18 @@ class _CancellationPolicyCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          _PolicyItem(text: 'Cancel more than 12 hours before the service: 100% refund'),
+          _PolicyItem(
+            text: 'Cancel more than 12 hours before the service: 100% refund',
+          ),
           const SizedBox(height: 8),
-          _PolicyItem(text: 'Cancel within 12 hours of the service: 50% refund'),
+          _PolicyItem(
+            text: 'Cancel within 12 hours of the service: 50% refund',
+          ),
           const SizedBox(height: 8),
-          _PolicyItem(text: 'Cancel within 3 hours of the service: No refund (100% charges apply)'),
+          _PolicyItem(
+            text:
+                'Cancel within 3 hours of the service: No refund (100% charges apply)',
+          ),
           const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,

@@ -35,6 +35,7 @@ class CartScreen extends ConsumerStatefulWidget {
 class _CartScreenState extends ConsumerState<CartScreen> {
   bool _isSearchingPartner = false;
   bool _searchCancelRequested = false;
+  bool _isCouponCelebrationShowing = false;
   io.Socket? _bookingSocket;
   Completer<int?>? _pendingAcceptCompleter;
   Timer? _pendingAcceptTimeout;
@@ -248,8 +249,10 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                         appliedCouponsAsync: appliedCouponsAsync,
                         summary: summary,
                         onTapApplyCoupon: () async {
-                          await Navigator.of(context).push(
-                            MaterialPageRoute<void>(
+                          final appliedCouponCode = await Navigator.of(
+                            context,
+                          ).push<String>(
+                            MaterialPageRoute<String>(
                               builder: (_) => const ApplyCouponScreen(),
                             ),
                           );
@@ -261,6 +264,16 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                           await ref
                               .read(cartProvider.notifier)
                               .loadSummary(forceRefresh: true);
+
+                          if (appliedCouponCode != null &&
+                              appliedCouponCode.trim().isNotEmpty) {
+                            final refreshedSummary =
+                                ref.read(cartProvider).summary ?? summary;
+                            await _showCouponCelebration(
+                              savedAmount:
+                                  refreshedSummary.pricing.discount.abs(),
+                            );
+                          }
                         },
                       ),
                       const SizedBox(height: 10),
@@ -928,6 +941,40 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     }
   }
 
+  Future<void> _showCouponCelebration({required int savedAmount}) async {
+    if (!mounted || _isCouponCelebrationShowing) {
+      return;
+    }
+
+    _isCouponCelebrationShowing = true;
+
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      barrierLabel: 'Coupon celebration',
+      barrierColor: const Color(0x66000000),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (dialogContext, animation, secondaryAnimation) {
+        return _CouponCelebrationOverlay(
+          savedAmount: savedAmount,
+          onComplete: () {
+            if (Navigator.of(dialogContext, rootNavigator: true).canPop()) {
+              Navigator.of(dialogContext, rootNavigator: true).pop();
+            }
+          },
+        );
+      },
+    );
+
+    if (mounted) {
+      setState(() {
+        _isCouponCelebrationShowing = false;
+      });
+    } else {
+      _isCouponCelebrationShowing = false;
+    }
+  }
+
   String _generateIdempotencyKey() {
     final random = math.Random.secure();
     final bytes = List<int>.generate(16, (_) => random.nextInt(256));
@@ -1146,6 +1193,286 @@ class _CartScreenState extends ConsumerState<CartScreen> {
         ),
       ],
     );
+  }
+}
+
+class _CouponCelebrationOverlay extends StatefulWidget {
+  const _CouponCelebrationOverlay({
+    required this.savedAmount,
+    required this.onComplete,
+  });
+
+  final int savedAmount;
+  final VoidCallback onComplete;
+
+  @override
+  State<_CouponCelebrationOverlay> createState() =>
+      _CouponCelebrationOverlayState();
+}
+
+class _CouponCelebrationOverlayState extends State<_CouponCelebrationOverlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final List<_CelebrationParticle> _particles;
+
+  @override
+  void initState() {
+    super.initState();
+    final random = math.Random();
+    _particles = List.generate(28, (index) {
+      final shape = _CelebrationParticleShape.values[
+          random.nextInt(_CelebrationParticleShape.values.length)];
+      final palette = <Color>[
+        const Color(0xFFF43F5E),
+        const Color(0xFF22C55E),
+        const Color(0xFF3B82F6),
+        const Color(0xFFF59E0B),
+        const Color(0xFFA855F7),
+        const Color(0xFFEC4899),
+      ];
+
+      return _CelebrationParticle(
+        baseX: random.nextDouble(),
+        startY: -80 - random.nextDouble() * 140,
+        driftX: 18 + random.nextDouble() * 26,
+        size: 6 + random.nextDouble() * 8,
+        rotation: random.nextDouble() * math.pi,
+        delay: random.nextDouble() * 0.12,
+        color: palette[index % palette.length],
+        shape: shape,
+      );
+    });
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2200),
+    )..forward();
+
+    Future<void>.delayed(const Duration(milliseconds: 2400), () {
+      if (mounted) {
+        widget.onComplete();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final savedAmountLabel = formatInr(widget.savedAmount);
+
+    return Material(
+      color: Colors.transparent,
+      child: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return Stack(
+              children: [
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: AnimatedBuilder(
+                      animation: _controller,
+                      builder: (context, child) {
+                        final progress = Curves.easeIn.transform(_controller.value);
+                        return Stack(
+                          children: _particles.map((particle) {
+                            final effectiveProgress =
+                                (progress - particle.delay).clamp(0.0, 1.0);
+                            if (effectiveProgress <= 0) {
+                              return const SizedBox.shrink();
+                            }
+
+                            final x = particle.baseX * constraints.maxWidth +
+                                math.sin((effectiveProgress * math.pi * 2) +
+                                        particle.baseX * 12) *
+                                    particle.driftX;
+                            final y = particle.startY +
+                                (constraints.maxHeight + 180) * effectiveProgress;
+
+                            return Positioned(
+                              left: x,
+                              top: y,
+                              child: Transform.rotate(
+                                angle:
+                                    particle.rotation + (effectiveProgress * math.pi * 2.4),
+                                child: _CelebrationParticleView(particle: particle),
+                              ),
+                            );
+                          }).toList(growable: false),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                Center(
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween<double>(begin: 0.86, end: 1),
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOutBack,
+                    builder: (context, scale, child) {
+                      return Transform.scale(scale: scale, child: child);
+                    },
+                    child: Container(
+                      width: 280,
+                      padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x33000000),
+                            blurRadius: 24,
+                            offset: Offset(0, 14),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                height: 38,
+                                width: 38,
+                                decoration: const BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Color(0xFF22C55E),
+                                ),
+                                child: const Icon(
+                                  Icons.check,
+                                  color: Colors.white,
+                                  size: 22,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              const Expanded(
+                                child: Text(
+                                  'Yay! Offer Applied 🎉',
+                                  style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF111827),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          Text(
+                            'You saved $savedAmountLabel on this order',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF6B7280),
+                              height: 1.35,
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 46,
+                            child: FilledButton(
+                              onPressed: widget.onComplete,
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFF0B1F3A),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Text(
+                                'Okay',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _CelebrationParticle {
+  const _CelebrationParticle({
+    required this.baseX,
+    required this.startY,
+    required this.driftX,
+    required this.size,
+    required this.rotation,
+    required this.delay,
+    required this.color,
+    required this.shape,
+  });
+
+  final double baseX;
+  final double startY;
+  final double driftX;
+  final double size;
+  final double rotation;
+  final double delay;
+  final Color color;
+  final _CelebrationParticleShape shape;
+}
+
+enum _CelebrationParticleShape { square, rectangle, dot, star }
+
+class _CelebrationParticleView extends StatelessWidget {
+  const _CelebrationParticleView({required this.particle});
+
+  final _CelebrationParticle particle;
+
+  @override
+  Widget build(BuildContext context) {
+    switch (particle.shape) {
+      case _CelebrationParticleShape.star:
+        return Icon(
+          Icons.star_rounded,
+          size: particle.size + 4,
+          color: particle.color,
+        );
+      case _CelebrationParticleShape.dot:
+        return Container(
+          width: particle.size,
+          height: particle.size,
+          decoration: BoxDecoration(
+            color: particle.color,
+            shape: BoxShape.circle,
+          ),
+        );
+      case _CelebrationParticleShape.rectangle:
+        return Container(
+          width: particle.size + 5,
+          height: particle.size,
+          decoration: BoxDecoration(
+            color: particle.color,
+            borderRadius: BorderRadius.circular(3),
+          ),
+        );
+      case _CelebrationParticleShape.square:
+        return Container(
+          width: particle.size,
+          height: particle.size,
+          decoration: BoxDecoration(
+            color: particle.color,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        );
+    }
   }
 }
 
