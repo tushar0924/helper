@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 class MainBottomBar extends StatelessWidget {
   const MainBottomBar({
@@ -36,6 +37,7 @@ class MainBottomBar extends StatelessWidget {
             ),
             _NavItem(
               icon: Icons.support_agent,
+              imageAsset: 'assets/images/helper.svg',
               label: 'Helperr4U',
               selected: selectedTab == MainTab.helper,
               onTap: onHelperTap,
@@ -65,12 +67,14 @@ class _NavItem extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onTap,
+    this.imageAsset,
   });
 
   final IconData icon;
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  final String? imageAsset;
 
   @override
   Widget build(BuildContext context) {
@@ -87,10 +91,21 @@ class _NavItem extends StatelessWidget {
               height: 32,
               width: 32,
               decoration: BoxDecoration(
-                color: selected ? const Color(0xFF0EA5C6) : Colors.transparent,
-                borderRadius: BorderRadius.circular(16),
+                color: selected ? const Color(0xFF0B1F3A) : Colors.transparent,
+                borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(icon, size: 17, color: iconColor),
+              alignment: Alignment.center,
+              child: imageAsset != null
+                    ? SvgPicture.asset(
+                        imageAsset!,
+                        width: 18,
+                        height: 18,
+                        colorFilter: ColorFilter.mode(
+                          iconColor,
+                          BlendMode.srcIn,
+                        ),
+                      )
+                  : Icon(icon, size: 17, color: iconColor),
             ),
             const SizedBox(height: 5),
             Text(

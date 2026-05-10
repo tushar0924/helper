@@ -1,5 +1,6 @@
 import '../../../network/api_client.dart';
 import '../../../network/api_endpoint.dart';
+import '../modal/in_progress_booking_modal.dart';
 import 'address_models.dart';
 
 class AddressRepository {
@@ -57,6 +58,24 @@ class AddressRepository {
     await _apiClient.deleteJson(
       UserApiEndpoint.addressById(addressId),
       requiresAuth: true,
+    );
+  }
+
+  Future<InProgressBookingsModal> getInProgressBookings() async {
+    final response = await _apiClient.getJson(
+      UserApiEndpoint.bookings,
+      requiresAuth: true,
+    );
+
+    final modal = InProgressBookingsModal.fromJson(response);
+    // Filter for IN_PROGRESS status only
+    final inProgressBookings = modal.bookings
+        .where((booking) => booking.status.toUpperCase() == 'IN_PROGRESS')
+        .toList();
+    return InProgressBookingsModal(
+      success: modal.success,
+      message: modal.message,
+      bookings: inProgressBookings,
     );
   }
 }

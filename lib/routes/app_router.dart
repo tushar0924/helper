@@ -5,6 +5,8 @@ import '../features/auth/presentation/login_screen.dart';
 import '../features/auth/presentation/otp_screen.dart';
 import '../features/auth/presentation/signup_screen.dart';
 import '../features/cart/presentation/cart_screen.dart';
+import '../features/home/presentation/booking_detail_screen.dart';
+import '../features/home/presentation/bookings_orders_screen.dart';
 import '../features/home/presentation/coming_soon_screen.dart';
 import '../features/home/presentation/main_navigation_screen.dart';
 import '../features/home/presentation/service_detail_screen.dart';
@@ -28,6 +30,8 @@ class AppRouter {
   static const String serviceViewDetail = '/service-view-detail';
   static const String cart = '/cart';
   static const String chooseRole = '/choose-role';
+  static const String bookingDetailScreen = '/booking-detail';
+  static const String bookingsOrdersScreen = '/bookings-orders';
 
   static Map<String, WidgetBuilder> routes() => {
     splash: (_) => const SplashScreen(),
@@ -68,5 +72,11 @@ class AppRouter {
     },
     cart: (_) => const CartScreen(),
     chooseRole: (_) => const ChooseRoleScreen(),
+    bookingDetailScreen: (context) {
+      final bookingId =
+          ModalRoute.of(context)?.settings.arguments as int?;
+      return BookingDetailScreen(bookingId: bookingId ?? 0);
+    },
+    bookingsOrdersScreen: (_) => const BookingsOrdersScreen(),
   };
 }

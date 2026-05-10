@@ -70,6 +70,7 @@ class UserApiEndpoint {
   static const String addresses = 'user/addresses';
 
   static String bookingById(int bookingId) => 'user/bookings/$bookingId';
+  static const String bookings = 'user/bookings';
 
   static String addressById(int id) => 'user/addresses/$id';
 }

@@ -20,6 +20,7 @@ import 'widgets/location_picker_bottom_sheet.dart';
 import 'widgets/most_booked_card.dart';
 import 'widgets/offer_card.dart';
 import 'widgets/service_tile.dart';
+import 'widgets/in_progress_bookings_widget.dart';
 
 class HelperTabView extends ConsumerStatefulWidget {
   const HelperTabView({super.key});
@@ -288,6 +289,7 @@ class _HelperTabViewState extends ConsumerState<HelperTabView>
                               },
                             ),
                           ),
+                          const InProgressBookingsWidget(),
                         ],
                       ),
                     ),
