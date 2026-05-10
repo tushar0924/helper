@@ -5,6 +5,7 @@ import '../../../app/utils/app_toast.dart';
 import '../../../routes/app_router.dart';
 import '../../cart/application/cart_provider.dart';
 import '../../cart/presentation/widgets/clear_cart_dialog.dart';
+import '../../kirana/presentation/kirana_screen.dart';
 import '../application/category_provider.dart';
 import 'home_screen.dart';
 import 'home_tab_screen.dart';
@@ -39,7 +40,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
       case MainTab.helper:
         return const HelperTabView();
       case MainTab.kirana:
-        return const _ComingSoonTab(label: 'Kirana4U');
+        return const KiranaScreen();
     }
   }
 
@@ -209,26 +210,6 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
               },
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ComingSoonTab extends StatelessWidget {
-  const _ComingSoonTab({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Text(
-        '$label Coming soon',
-        style: const TextStyle(
-          fontSize: 22,
-          fontWeight: FontWeight.w600,
-          color: Color(0xFF0F2A47),
         ),
       ),
     );
