@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/utils/app_toast.dart';
+import '../../cart/application/cart_provider.dart';
+import '../application/home_bootstrap_provider.dart';
 import '../application/address_provider.dart';
 import '../data/address_models.dart';
 import 'address_location_picker_screen.dart';
@@ -125,8 +127,78 @@ class _SavedAddressesScreenState extends ConsumerState<SavedAddressesScreen> {
     }
   }
 
+  Future<void> _confirmSelectAddress(SavedAddress address) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          title: const Text(
+            'Select this address?',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF111827),
+            ),
+          ),
+          content: Text(
+            '${address.address}, ${address.city} - ${address.pinCode}',
+            style: const TextStyle(
+              fontSize: 14,
+              color: Color(0xFF4B5563),
+              height: 1.4,
+            ),
+          ),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('No'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF0B2A4A),
+              ),
+              child: const Text('Yes, select'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    try {
+      await ref.read(homeBootstrapProvider.notifier).applySavedAddress(address);
+      await ref.read(cartProvider.notifier).loadSummary(forceRefresh: true);
+      if (!mounted) {
+        return;
+      }
+      AppToast.success('Address selected');
+    } catch (error) {
+      if (mounted) {
+        AppToast.error(error.toString());
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final homeState = ref.watch(homeBootstrapProvider);
+    final selectedAddressId =
+        homeState.selectedLocationSource == SelectedLocationSource.savedAddress
+        ? homeState.selectedAddressId
+        : null;
+    final selectedLabel = homeState.selectedLocationLabel?.trim();
+    final selectedLocationLine = homeState.locationLine?.trim();
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -186,6 +258,14 @@ class _SavedAddressesScreenState extends ConsumerState<SavedAddressesScreen> {
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
               child: Column(
                 children: [
+                  _SelectedAddressBanner(
+                    label: selectedLabel,
+                    locationLine: selectedLocationLine,
+                    isCurrentLocation:
+                        homeState.selectedLocationSource ==
+                        SelectedLocationSource.currentLocation,
+                  ),
+                  const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
@@ -249,11 +329,14 @@ class _SavedAddressesScreenState extends ConsumerState<SavedAddressesScreen> {
                         final address = _response!.addresses[index];
                         final isDefault =
                             address.id == _response?.defaultAddress?.id;
+                        final isSelected = address.id == selectedAddressId;
 
                         return _AddressCard(
                           address: address,
                           isDefault: isDefault,
+                          isSelected: isSelected,
                           isEditLoading: _editingAddressId == address.id,
+                          onTap: () => _confirmSelectAddress(address),
                           onEdit: () => _openEditAddressFlow(address),
                           onDelete: () => _deleteAddress(address),
                         );
@@ -270,145 +353,175 @@ class _AddressCard extends StatelessWidget {
   const _AddressCard({
     required this.address,
     required this.isDefault,
+    required this.isSelected,
     required this.isEditLoading,
     this.isDeleteLoading = false,
+    required this.onTap,
     required this.onEdit,
     required this.onDelete,
   });
 
   final SavedAddress address;
   final bool isDefault;
+  final bool isSelected;
   final bool isEditLoading;
   final bool isDeleteLoading;
+  final VoidCallback onTap;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(14),
-      ),
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+        child: Container(
+          decoration: BoxDecoration(
+            color: isSelected ? const Color(0xFFF0FDF4) : Colors.white,
+            border: Border.all(
+              color: isSelected
+                  ? const Color(0xFF22C55E)
+                  : const Color(0xFFE5E7EB),
+            ),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: _getColorForLabel(
-                    address.label,
-                  ).withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  _getIconForLabel(address.label),
-                  size: 16,
-                  color: _getColorForLabel(address.label),
+              Row(
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: _getColorForLabel(
+                        address.label,
+                      ).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      _getIconForLabel(address.label),
+                      size: 16,
+                      color: _getColorForLabel(address.label),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          address.label,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF111827),
+                          ),
+                        ),
+                        if (isSelected) ...[
+                          const SizedBox(height: 6),
+                          _SelectedBadge(text: 'Selected'),
+                        ],
+                        if (isDefault)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 4),
+                            child: Text(
+                              'Default',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFF10B981),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                address.address,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF111827),
+                  height: 1.4,
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      address.label,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF111827),
+              const SizedBox(height: 6),
+              Text(
+                '${address.city}, ${address.pinCode}',
+                style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: isEditLoading || isDeleteLoading
+                          ? null
+                          : onEdit,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF0B2A4A),
+                        side: const BorderSide(color: Color(0xFFD1D5DB)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
-                    ),
-                    if (isDefault)
-                      const Text(
-                        'Default',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Color(0xFF10B981),
+                      icon: isEditLoading
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.edit_outlined, size: 16),
+                      label: Text(
+                        isEditLoading ? 'Loading...' : 'Edit',
+                        style: const TextStyle(
+                          fontSize: 13,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                  ],
-                ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: isEditLoading || isDeleteLoading
+                          ? null
+                          : onDelete,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFFDC2626),
+                        side: const BorderSide(color: Color(0xFFD1D5DB)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      icon: isDeleteLoading
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.delete_outlined, size: 16),
+                      label: Text(
+                        isDeleteLoading ? 'Deleting...' : 'Delete',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          Text(
-            address.address,
-            style: const TextStyle(
-              fontSize: 13,
-              color: Color(0xFF111827),
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '${address.city}, ${address.pinCode}',
-            style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: isEditLoading || isDeleteLoading ? null : onEdit,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF0B2A4A),
-                    side: const BorderSide(color: Color(0xFFD1D5DB)),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  icon: isEditLoading
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.edit_outlined, size: 16),
-                  label: Text(
-                    isEditLoading ? 'Loading...' : 'Edit',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: isEditLoading || isDeleteLoading ? null : onDelete,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFFDC2626),
-                    side: const BorderSide(color: Color(0xFFD1D5DB)),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  icon: isDeleteLoading
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.delete_outlined, size: 16),
-                  label: Text(
-                    isDeleteLoading ? 'Deleting...' : 'Delete',
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -437,5 +550,104 @@ class _AddressCard extends StatelessWidget {
       default:
         return const Color(0xFF6B7280);
     }
+  }
+}
+
+class _SelectedAddressBanner extends StatelessWidget {
+  const _SelectedAddressBanner({
+    required this.label,
+    required this.locationLine,
+    required this.isCurrentLocation,
+  });
+
+  final String? label;
+  final String? locationLine;
+  final bool isCurrentLocation;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasText = (locationLine?.trim().isNotEmpty ?? false);
+    if (!hasText && !isCurrentLocation) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0FDF4),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFBBF7D0)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.verified, color: Color(0xFF16A34A), size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isCurrentLocation ? 'Currently using' : 'Currently selected',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF166534),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                if ((label?.isNotEmpty ?? false))
+                  Text(
+                    label!,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                if (hasText) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    locationLine!,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF166534),
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SelectedBadge extends StatelessWidget {
+  const _SelectedBadge({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFD1FAE5),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFF86EFAC)),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: Color(0xFF166534),
+        ),
+      ),
+    );
   }
 }

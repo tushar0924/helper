@@ -17,6 +17,7 @@ class HomeBootstrapState {
     this.showComingSoon = false,
     this.selectedLocationLabel,
     this.selectedLocationSource,
+    this.selectedAddressId,
     this.locationLine,
     this.city,
     this.pincode,
@@ -29,6 +30,7 @@ class HomeBootstrapState {
   final bool showComingSoon;
   final String? selectedLocationLabel;
   final SelectedLocationSource? selectedLocationSource;
+  final int? selectedAddressId;
   final String? locationLine;
   final String? city;
   final String? pincode;
@@ -41,6 +43,7 @@ class HomeBootstrapState {
     bool? showComingSoon,
     String? selectedLocationLabel,
     SelectedLocationSource? selectedLocationSource,
+    int? selectedAddressId,
     String? locationLine,
     String? city,
     String? pincode,
@@ -53,10 +56,11 @@ class HomeBootstrapState {
       isLoading: isLoading ?? this.isLoading,
       hasLoaded: hasLoaded ?? this.hasLoaded,
       showComingSoon: showComingSoon ?? this.showComingSoon,
-        selectedLocationLabel:
+      selectedLocationLabel:
           selectedLocationLabel ?? this.selectedLocationLabel,
-        selectedLocationSource:
+      selectedLocationSource:
           selectedLocationSource ?? this.selectedLocationSource,
+      selectedAddressId: selectedAddressId ?? this.selectedAddressId,
       locationLine: locationLine ?? this.locationLine,
       city: city ?? this.city,
       pincode: pincode ?? this.pincode,
@@ -68,7 +72,9 @@ class HomeBootstrapState {
   }
 }
 
-final homeBootstrapRepositoryProvider = Provider<HomeBootstrapRepository>((ref) {
+final homeBootstrapRepositoryProvider = Provider<HomeBootstrapRepository>((
+  ref,
+) {
   return HomeBootstrapRepository(ref.read(apiClientProvider));
 });
 
@@ -82,7 +88,7 @@ final homeBootstrapProvider =
 
 class HomeBootstrapController extends StateNotifier<HomeBootstrapState> {
   HomeBootstrapController(this._repository, this._sessionManager)
-      : super(const HomeBootstrapState());
+    : super(const HomeBootstrapState());
 
   final HomeBootstrapRepository _repository;
   final SessionManager _sessionManager;
@@ -155,6 +161,7 @@ class HomeBootstrapController extends StateNotifier<HomeBootstrapState> {
         hasLoaded: true,
         selectedLocationLabel: 'Current location',
         selectedLocationSource: SelectedLocationSource.currentLocation,
+        selectedAddressId: null,
         locationLine: locationLine,
         city: city,
         pincode: pincode,
@@ -264,6 +271,7 @@ class HomeBootstrapController extends StateNotifier<HomeBootstrapState> {
     state = state.copyWith(
       selectedLocationLabel: draft.label,
       selectedLocationSource: SelectedLocationSource.savedAddress,
+      selectedAddressId: address.id,
       clearLocationIssueMessage: true,
     );
   }
@@ -296,6 +304,7 @@ class HomeBootstrapController extends StateNotifier<HomeBootstrapState> {
     state = state.copyWith(
       selectedLocationLabel: draft.label,
       selectedLocationSource: SelectedLocationSource.manualSearch,
+      selectedAddressId: null,
       clearLocationIssueMessage: true,
     );
   }
@@ -340,6 +349,7 @@ class HomeBootstrapController extends StateNotifier<HomeBootstrapState> {
     state = state.copyWith(
       selectedLocationLabel: selected.label,
       selectedLocationSource: selected.source,
+      selectedAddressId: selected.addressId,
       locationLine: selected.locationLine,
       city: selected.city,
       pincode: selected.pinCode,
@@ -396,14 +406,16 @@ class HomeBootstrapController extends StateNotifier<HomeBootstrapState> {
     final data = response['data'];
     final source = data is Map<String, dynamic> ? data : response;
 
-    final comingSoon = _asBool(source['comingSoon']) ??
+    final comingSoon =
+        _asBool(source['comingSoon']) ??
         _asBool(source['isComingSoon']) ??
         _asBool(source['showComingSoon']);
     if (comingSoon != null) {
       return comingSoon;
     }
 
-    final serviceable = _asBool(source['serviceable']) ??
+    final serviceable =
+        _asBool(source['serviceable']) ??
         _asBool(source['isServiceable']) ??
         _asBool(source['isAvailable']);
     if (serviceable != null) {

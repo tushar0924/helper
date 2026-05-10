@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../home/application/home_bootstrap_provider.dart';
 import '../../home/application/address_provider.dart';
 import '../../home/data/address_models.dart';
 
@@ -52,7 +53,8 @@ class _AddressSelectionBottomSheetState
           : null;
       final currentId = _selectedAddressId;
       final hasCurrentId =
-          currentId != null && response.addresses.any((item) => item.id == currentId);
+          currentId != null &&
+          response.addresses.any((item) => item.id == currentId);
 
       setState(() {
         _addresses = response.addresses;
@@ -87,6 +89,12 @@ class _AddressSelectionBottomSheetState
 
   @override
   Widget build(BuildContext context) {
+    final homeState = ref.watch(homeBootstrapProvider);
+    final selectedAddressId =
+        homeState.selectedLocationSource == SelectedLocationSource.savedAddress
+        ? homeState.selectedAddressId
+        : widget.currentAddressId;
+
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.fromLTRB(
@@ -198,7 +206,7 @@ class _AddressSelectionBottomSheetState
                   separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (context, index) {
                     final address = _addresses[index];
-                    final isSelected = address.id == _selectedAddressId;
+                    final isSelected = address.id == selectedAddressId;
 
                     return InkWell(
                       onTap: () {
@@ -210,10 +218,13 @@ class _AddressSelectionBottomSheetState
                       child: Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
+                          color: isSelected
+                              ? const Color(0xFFF0FDF4)
+                              : Colors.white,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
                             color: isSelected
-                                ? const Color(0xFF0B1F3A)
+                                ? const Color(0xFF22C55E)
                                 : const Color(0xFFE5E7EB),
                           ),
                         ),
@@ -222,7 +233,7 @@ class _AddressSelectionBottomSheetState
                           children: [
                             Radio<int>(
                               value: address.id,
-                              groupValue: _selectedAddressId,
+                              groupValue: selectedAddressId,
                               onChanged: (value) {
                                 if (value == null) return;
                                 setState(() {
@@ -243,6 +254,10 @@ class _AddressSelectionBottomSheetState
                                       color: Color(0xFF0F172A),
                                     ),
                                   ),
+                                  if (isSelected) ...[
+                                    const SizedBox(height: 6),
+                                    const _SelectedBadge(),
+                                  ],
                                   const SizedBox(height: 4),
                                   Text(
                                     '${address.address}, ${address.city} - ${address.pinCode}',
@@ -290,6 +305,30 @@ class _AddressSelectionBottomSheetState
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SelectedBadge extends StatelessWidget {
+  const _SelectedBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFD1FAE5),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFF86EFAC)),
+      ),
+      child: const Text(
+        'Selected',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: Color(0xFF166534),
         ),
       ),
     );

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
@@ -12,12 +13,11 @@ import '../application/cart_provider.dart';
 import '../application/coupon_provider.dart';
 import '../data/cart_repository.dart';
 import '../../home/application/address_provider.dart';
+import '../../home/application/home_bootstrap_provider.dart';
 import '../../home/data/address_models.dart';
 import '../modal/booking_details_modal.dart';
 import '../modal/applied_coupons_modal.dart';
 import '../modal/cart_summary_modal.dart';
-import '../../home/presentation/saved_addresses_screen.dart';
-import '../../shared/widgets/address_selection_bottom_sheet.dart';
 import '../../home/presentation/widgets/location_picker_bottom_sheet.dart';
 import '../../../network/api_endpoint.dart';
 import 'booking_confirmed_screen.dart';
@@ -249,13 +249,12 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                         appliedCouponsAsync: appliedCouponsAsync,
                         summary: summary,
                         onTapApplyCoupon: () async {
-                          final appliedCouponCode = await Navigator.of(
-                            context,
-                          ).push<String>(
-                            MaterialPageRoute<String>(
-                              builder: (_) => const ApplyCouponScreen(),
-                            ),
-                          );
+                          final appliedCouponCode = await Navigator.of(context)
+                              .push<String>(
+                                MaterialPageRoute<String>(
+                                  builder: (_) => const ApplyCouponScreen(),
+                                ),
+                              );
                           if (!mounted) {
                             return;
                           }
@@ -270,8 +269,8 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                             final refreshedSummary =
                                 ref.read(cartProvider).summary ?? summary;
                             await _showCouponCelebration(
-                              savedAmount:
-                                  refreshedSummary.pricing.discount.abs(),
+                              savedAmount: refreshedSummary.pricing.discount
+                                  .abs(),
                             );
                           }
                         },
@@ -383,17 +382,18 @@ class _CartScreenState extends ConsumerState<CartScreen> {
 
     final idempotencyKey = _generateIdempotencyKey();
     var searchDialogDismissed = false;
-    final dialogFuture = showSearchPartnerDialog(
-      context,
-      onCancelConfirmed: _cancelPendingBookingRequest,
-    ).whenComplete(() {
-      searchDialogDismissed = true;
-      if (mounted && _isSearchingPartner) {
-        setState(() {
-          _isSearchingPartner = false;
+    final dialogFuture =
+        showSearchPartnerDialog(
+          context,
+          onCancelConfirmed: _cancelPendingBookingRequest,
+        ).whenComplete(() {
+          searchDialogDismissed = true;
+          if (mounted && _isSearchingPartner) {
+            setState(() {
+              _isSearchingPartner = false;
+            });
+          }
         });
-      }
-    });
 
     CreateFromCartResult? result;
     try {
@@ -434,8 +434,9 @@ class _CartScreenState extends ConsumerState<CartScreen> {
         bookingRequestId > 0) {
       bookingId = await _waitForBookingAcceptanceViaSocket(
         bookingRequestId: bookingRequestId,
-        timeout:
-            Duration(seconds: (createdResult.acceptanceWindowSeconds ?? 30) + 5),
+        timeout: Duration(
+          seconds: (createdResult.acceptanceWindowSeconds ?? 30) + 5,
+        ),
       );
 
       if (searchDialogDismissed) {
@@ -467,7 +468,8 @@ class _CartScreenState extends ConsumerState<CartScreen> {
               ? retryData['requestId'] ?? retryData['id']
               : null,
         );
-        final nextTimeoutSeconds = _toInt(
+        final nextTimeoutSeconds =
+            _toInt(
               retryData is Map<String, dynamic>
                   ? retryData['timeoutSeconds']
                   : null,
@@ -542,7 +544,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
           .read(cartRepositoryProvider)
           .getPartnerBooking(bookingId: bookingId);
       _partnerDetails = bookingDetails.toPartnerDetailsMap();
-      
+
       if (mounted) {
         AppToast.success('Partner request accepted');
       }
@@ -828,9 +830,9 @@ class _CartScreenState extends ConsumerState<CartScreen> {
         throw StateError('Booking request is not ready to cancel yet');
       }
 
-      await ref.read(cartRepositoryProvider).cancelBookingRequest(
-            bookingRequestId: bookingRequestId,
-          );
+      await ref
+          .read(cartRepositoryProvider)
+          .cancelBookingRequest(bookingRequestId: bookingRequestId);
 
       _pendingAcceptTimeout?.cancel();
       _pendingAcceptTimeout = null;
@@ -913,7 +915,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
   }
 
   Future<void> _onChangeAddressTap() async {
-    final selectedAddress = await showModalBottomSheet<SavedAddress?>(
+    final selection = await showModalBottomSheet<dynamic>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.white,
@@ -923,13 +925,20 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       builder: (_) => const LocationPickerBottomSheet(),
     );
 
-    if (!mounted || selectedAddress == null) {
+    if (!mounted) {
       return;
     }
 
-    await ref
-        .read(cartProvider.notifier)
-        .updateAddress(addressId: selectedAddress.id);
+    if (selection is SavedAddress) {
+      await ref
+          .read(homeBootstrapProvider.notifier)
+          .applySavedAddress(selection);
+      await ref
+          .read(cartProvider.notifier)
+          .updateAddress(addressId: selection.id);
+    } else {
+      await ref.read(cartProvider.notifier).loadSummary(forceRefresh: true);
+    }
 
     if (!mounted) {
       return;
@@ -1020,9 +1029,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
               const SizedBox(height: 4),
               CustomPaint(
                 size: Size(textPainter.width, 2),
-                painter: const _DottedLinePainter(
-                  color: Color(0xFF1F2937),
-                ),
+                painter: const _DottedLinePainter(color: Color(0xFF1F2937)),
               ),
             ],
           )
@@ -1158,15 +1165,40 @@ class _CartScreenState extends ConsumerState<CartScreen> {
   }
 
   Widget _addressSummary(CartSummaryModal summary) {
+    final homeState = ref.watch(homeBootstrapProvider);
+    final homeLocationLine = homeState.locationLine?.trim();
+
+    if (homeLocationLine != null && homeLocationLine.isNotEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            homeState.selectedLocationLabel ?? 'Selected location',
+            style: const TextStyle(
+              fontSize: 13,
+              color: Color(0xFF111827),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            homeLocationLine,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Color(0xFF6B7280),
+              height: 1.35,
+            ),
+          ),
+        ],
+      );
+    }
+
     final address = summary.address;
+
     if (address == null) {
       return const Text(
         'Service address not selected',
-        style: TextStyle(
-          fontSize: 13,
-          color: Color(0xFF6B7280),
-          height: 1.35,
-        ),
+        style: TextStyle(fontSize: 13, color: Color(0xFF6B7280), height: 1.35),
       );
     }
 
@@ -1220,8 +1252,8 @@ class _CouponCelebrationOverlayState extends State<_CouponCelebrationOverlay>
     super.initState();
     final random = math.Random();
     _particles = List.generate(28, (index) {
-      final shape = _CelebrationParticleShape.values[
-          random.nextInt(_CelebrationParticleShape.values.length)];
+      final shape = _CelebrationParticleShape
+          .values[random.nextInt(_CelebrationParticleShape.values.length)];
       final palette = <Color>[
         const Color(0xFFF43F5E),
         const Color(0xFF22C55E),
@@ -1277,32 +1309,44 @@ class _CouponCelebrationOverlayState extends State<_CouponCelebrationOverlay>
                     child: AnimatedBuilder(
                       animation: _controller,
                       builder: (context, child) {
-                        final progress = Curves.easeIn.transform(_controller.value);
+                        final progress = Curves.easeIn.transform(
+                          _controller.value,
+                        );
                         return Stack(
-                          children: _particles.map((particle) {
-                            final effectiveProgress =
-                                (progress - particle.delay).clamp(0.0, 1.0);
-                            if (effectiveProgress <= 0) {
-                              return const SizedBox.shrink();
-                            }
+                          children: _particles
+                              .map((particle) {
+                                final effectiveProgress =
+                                    (progress - particle.delay).clamp(0.0, 1.0);
+                                if (effectiveProgress <= 0) {
+                                  return const SizedBox.shrink();
+                                }
 
-                            final x = particle.baseX * constraints.maxWidth +
-                                math.sin((effectiveProgress * math.pi * 2) +
-                                        particle.baseX * 12) *
-                                    particle.driftX;
-                            final y = particle.startY +
-                                (constraints.maxHeight + 180) * effectiveProgress;
+                                final x =
+                                    particle.baseX * constraints.maxWidth +
+                                    math.sin(
+                                          (effectiveProgress * math.pi * 2) +
+                                              particle.baseX * 12,
+                                        ) *
+                                        particle.driftX;
+                                final y =
+                                    particle.startY +
+                                    (constraints.maxHeight + 180) *
+                                        effectiveProgress;
 
-                            return Positioned(
-                              left: x,
-                              top: y,
-                              child: Transform.rotate(
-                                angle:
-                                    particle.rotation + (effectiveProgress * math.pi * 2.4),
-                                child: _CelebrationParticleView(particle: particle),
-                              ),
-                            );
-                          }).toList(growable: false),
+                                return Positioned(
+                                  left: x,
+                                  top: y,
+                                  child: Transform.rotate(
+                                    angle:
+                                        particle.rotation +
+                                        (effectiveProgress * math.pi * 2.4),
+                                    child: _CelebrationParticleView(
+                                      particle: particle,
+                                    ),
+                                  ),
+                                );
+                              })
+                              .toList(growable: false),
                         );
                       },
                     ),
@@ -1745,8 +1789,6 @@ int _parseInt(Object? value) {
   return int.tryParse(cleaned) ?? 0;
 }
 
-
-
 class _ActionCard extends StatelessWidget {
   const _ActionCard({
     required this.icon,
@@ -1957,7 +1999,7 @@ class _CartServiceTile extends ConsumerWidget {
         cartState.isMutating ||
         cartState.mutatingServiceId != null;
     final disableDecrement =
-      cartState.isMutating || cartState.mutatingServiceId != null;
+        cartState.isMutating || cartState.mutatingServiceId != null;
 
     return Container(
       width: double.infinity,
@@ -2028,6 +2070,7 @@ class _CartServiceTile extends ConsumerWidget {
                             onTap: disableDecrement
                                 ? null
                                 : () {
+                                HapticFeedback.vibrate();
                                     ref
                                         .read(cartProvider.notifier)
                                         .decrementByServiceId(item.serviceId);
@@ -2064,6 +2107,7 @@ class _CartServiceTile extends ConsumerWidget {
                             onTap: disableIncrement
                                 ? null
                                 : () {
+                                HapticFeedback.vibrate();
                                     ref
                                         .read(cartProvider.notifier)
                                         .incrementByServiceId(item.serviceId);

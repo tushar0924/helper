@@ -4,12 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../app/utils/app_toast.dart';
+import 'package:helper/app/utils/app_toast.dart';
 import '../../auth/application/auth_provider.dart';
 import '../application/banner_provider.dart';
 import '../application/category_provider.dart';
 import '../application/home_bootstrap_provider.dart';
 import '../../cart/application/cart_provider.dart';
+import '../../cart/application/coupon_provider.dart';
 import '../modal/banner_modal.dart';
 import '../modal/category_modal.dart';
 import '../../../routes/app_router.dart';
@@ -598,14 +599,14 @@ Color _backgroundForIndex(int index) {
   return palette[index % palette.length];
 }
 
-class _OfferCarousel extends StatefulWidget {
+class _OfferCarousel extends ConsumerStatefulWidget {
   const _OfferCarousel();
 
   @override
-  State<_OfferCarousel> createState() => _OfferCarouselState();
+  ConsumerState<_OfferCarousel> createState() => _OfferCarouselState();
 }
 
-class _OfferCarouselState extends State<_OfferCarousel> {
+class _OfferCarouselState extends ConsumerState<_OfferCarousel> {
   final ScrollController _offerController = ScrollController();
 
   @override
@@ -637,58 +638,94 @@ class _OfferCarouselState extends State<_OfferCarousel> {
     const trackWidth = 58.0;
     const thumbWidth = 20.0;
 
+    final couponAsync = ref.watch(availableCouponsProvider);
+
     return Column(
       children: [
-        SizedBox(
-          height: 84,
-          child: ListView.separated(
-            controller: _offerController,
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            itemCount: 2,
-            separatorBuilder: (_, __) => const SizedBox(width: 10),
-            itemBuilder: (context, index) {
-              return OfferCard(
-                title: '20% off on first booking',
-                code: 'FIRST20',
-                gradient: index == 0
-                    ? const [Color(0xFF22BDF2), Color(0xFF0FA4DC)]
-                    : const [Color(0xFF0F294A), Color(0xFF0B203D)],
-              );
-            },
-          ),
-        ),
-        const SizedBox(height: 6),
-        SizedBox(
-          width: trackWidth,
-          height: 4,
-          child: Stack(
-            children: [
-              Container(
-                width: trackWidth,
-                height: 4,
+        couponAsync.when(
+          loading: () => SizedBox(
+            height: 84,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              itemCount: 2,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (context, index) => Container(
+                width: 232,
+                margin: const EdgeInsets.symmetric(vertical: 6),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFCFD3D8),
+                  color: Colors.grey.shade300,
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              AnimatedBuilder(
-                animation: _offerController,
-                builder: (context, child) {
-                  final left = (trackWidth - thumbWidth) * _progress();
-                  return Positioned(left: left, child: child!);
-                },
-                child: Container(
-                  width: thumbWidth,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0B0D10),
-                    borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          error: (_, __) => const SizedBox.shrink(),
+          data: (data) {
+            final coupons = data.coupons;
+            if (coupons.isEmpty) {
+              return const SizedBox.shrink();
+            }
+
+            return Column(
+              children: [
+                SizedBox(
+                  height: 84,
+                  child: ListView.separated(
+                    controller: _offerController,
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    itemCount: coupons.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 10),
+                    itemBuilder: (context, index) {
+                      final coupon = coupons[index];
+                      final gradient = index % 2 == 0
+                          ? const [Color(0xFF22BDF2), Color(0xFF0FA4DC)]
+                          : const [Color(0xFF0F294A), Color(0xFF0B203D)];
+
+                      return OfferCard(
+                        title: coupon.title.isNotEmpty ? coupon.title : coupon.message,
+                        code: coupon.code,
+                        gradient: gradient,
+                      );
+                    },
                   ),
                 ),
-              ),
-            ],
-          ),
+                const SizedBox(height: 6),
+                SizedBox(
+                  width: trackWidth,
+                  height: 4,
+                  child: Stack(
+                    children: [
+                      Container(
+                        width: trackWidth,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFCFD3D8),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      AnimatedBuilder(
+                        animation: _offerController,
+                        builder: (context, child) {
+                          final left = (trackWidth - thumbWidth) * _progress();
+                          return Positioned(left: left, child: child!);
+                        },
+                        child: Container(
+                          width: thumbWidth,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0B0D10),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ],
     );
