@@ -253,8 +253,11 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                               .push<String>(
                                 MaterialPageRoute<String>(
                                   builder: (_) => const ApplyCouponScreen(),
-                                ),
-                              );
+                                        ),
+                                      );
+                                  // Ensure coupons are refetched when user taps Apply Coupon
+                                  ref.invalidate(availableCouponsProvider);
+                                  ref.invalidate(appliedCouponsProvider);
                           if (!mounted) {
                             return;
                           }

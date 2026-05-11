@@ -24,13 +24,11 @@ class _ApplyCouponScreenState extends ConsumerState<ApplyCouponScreen> {
   String? _applyingCouponCode;
   String? _removingCouponCode;
   bool _isApplyingCouponSheetVisible = false;
+  DateTime? _processingSheetShownAt;
 
   @override
   void initState() {
     super.initState();
-    Future.microtask(() {
-      ref.invalidate(appliedCouponsProvider);
-    });
   }
 
   Future<void> _onApplyCoupon(CouponModal coupon) async {
@@ -65,7 +63,7 @@ class _ApplyCouponScreenState extends ConsumerState<ApplyCouponScreen> {
       await ref.read(cartProvider.notifier).loadSummary(forceRefresh: true);
 
       didSucceed = true;
-      _dismissApplyingCouponSheet();
+      await _dismissApplyingCouponSheet();
 
       if (!mounted) {
         return;
@@ -80,7 +78,7 @@ class _ApplyCouponScreenState extends ConsumerState<ApplyCouponScreen> {
         return;
       }
 
-      _dismissApplyingCouponSheet();
+      await _dismissApplyingCouponSheet();
     } finally {
       if (!mounted) {
         return;
@@ -124,13 +122,13 @@ class _ApplyCouponScreenState extends ConsumerState<ApplyCouponScreen> {
       ref.invalidate(availableCouponsProvider);
       await ref.read(cartProvider.notifier).loadSummary(forceRefresh: true);
 
-      _dismissApplyingCouponSheet();
+      await _dismissApplyingCouponSheet();
     } catch (_) {
       if (!mounted) {
         return;
       }
 
-      _dismissApplyingCouponSheet();
+      await _dismissApplyingCouponSheet();
     } finally {
       if (!mounted) {
         return;
@@ -169,7 +167,7 @@ class _ApplyCouponScreenState extends ConsumerState<ApplyCouponScreen> {
       await ref.read(cartProvider.notifier).loadSummary(forceRefresh: true);
 
       didSucceed = true;
-      _dismissApplyingCouponSheet();
+      await _dismissApplyingCouponSheet();
 
       if (!mounted) {
         return couponCode;
@@ -186,7 +184,7 @@ class _ApplyCouponScreenState extends ConsumerState<ApplyCouponScreen> {
         return null;
       }
 
-      _dismissApplyingCouponSheet();
+      await _dismissApplyingCouponSheet();
       _showCouponErrorDialog('Oops coupon does not exist.');
       return null;
     } finally {
@@ -204,6 +202,7 @@ class _ApplyCouponScreenState extends ConsumerState<ApplyCouponScreen> {
     }
 
     _isApplyingCouponSheetVisible = true;
+    _processingSheetShownAt = DateTime.now();
 
     await showModalBottomSheet<void>(
       context: context,
@@ -225,9 +224,18 @@ class _ApplyCouponScreenState extends ConsumerState<ApplyCouponScreen> {
     });
   }
 
-  void _dismissApplyingCouponSheet() {
+  Future<void> _dismissApplyingCouponSheet() async {
     if (!_isApplyingCouponSheetVisible) {
       return;
+    }
+
+    final minVisible = const Duration(seconds: 2);
+    final shownAt = _processingSheetShownAt;
+    if (shownAt != null) {
+      final elapsed = DateTime.now().difference(shownAt);
+      if (elapsed < minVisible) {
+        await Future<void>.delayed(minVisible - elapsed);
+      }
     }
 
     final navigator = Navigator.of(context, rootNavigator: true);

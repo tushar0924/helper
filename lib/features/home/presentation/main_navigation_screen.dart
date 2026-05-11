@@ -7,6 +7,8 @@ import '../../cart/application/cart_provider.dart';
 import '../../cart/presentation/widgets/clear_cart_dialog.dart';
 import '../../kirana/presentation/kirana_screen.dart';
 import '../application/category_provider.dart';
+import '../application/home_bootstrap_provider.dart';
+import 'widgets/location_picker_bottom_sheet.dart';
 import 'home_screen.dart';
 import 'home_tab_screen.dart';
 import 'widgets/main_bottom_bar.dart';
@@ -23,6 +25,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
   MainTab _selectedTab = MainTab.helper;
   bool _isCartBannerDismissed = false;
   DateTime? _lastBackPressedAt;
+  bool _hasShownLocationPrompt = false;
 
   @override
   void initState() {
@@ -30,6 +33,37 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
     Future.microtask(() {
       ref.read(categoryControllerProvider.notifier).loadCategories();
       ref.read(cartProvider.notifier).loadSummary(forceRefresh: true);
+      ref.read(homeBootstrapProvider.notifier).loadInitialLocation().then((_) {
+        _showLocationPromptIfNeeded();
+      });
+    });
+  }
+
+  void _showLocationPromptIfNeeded() {
+    if (!mounted || _hasShownLocationPrompt || _selectedTab != MainTab.helper) {
+      return;
+    }
+
+    final homeState = ref.read(homeBootstrapProvider);
+    if (homeState.locationIssueMessage == null) {
+      return;
+    }
+
+    _hasShownLocationPrompt = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (_) => const LocationPickerBottomSheet(),
+      );
     });
   }
 

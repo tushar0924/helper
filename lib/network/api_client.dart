@@ -209,7 +209,17 @@ class ApiClient {
 
   String? _extractMessage(Object? decoded) {
     if (decoded is Map<String, dynamic>) {
-      return decoded['message']?.toString();
+      final message = decoded['message']?.toString();
+      if (message != null && message.trim().isNotEmpty) {
+        return message;
+      }
+
+      final error = decoded['error']?.toString();
+      if (error != null && error.trim().isNotEmpty) {
+        return error;
+      }
+
+      return null;
     }
     if (decoded is String) {
       return decoded;

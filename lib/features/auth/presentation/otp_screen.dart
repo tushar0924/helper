@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../app/utils/app_toast.dart';
 import '../application/auth_provider.dart';
 import '../../../routes/app_router.dart';
 import 'widgets/auth_top_banner.dart';
@@ -25,11 +24,25 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
 
   int _resendSeconds = 25;
   Timer? _timer;
+  bool _isOtpComplete = false;
+  String _errorMessage = '';
 
   @override
   void initState() {
     super.initState();
     _startTimer();
+    // Add listeners to track OTP completion
+    for (final controller in _controllers) {
+      controller.addListener(_checkOtpCompletion);
+    }
+  }
+
+  void _checkOtpCompletion() {
+    final otp = _controllers.map((c) => c.text).join();
+    setState(() {
+      _isOtpComplete = otp.length == 4;
+      _errorMessage = '';
+    });
   }
 
   void _startTimer() {
@@ -69,12 +82,16 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
   Future<void> _verifyAndContinue(String? phone) async {
     final otp = _controllers.map((c) => c.text).join();
     if (otp.length < 4) {
-      AppToast.error('Enter the complete OTP');
+      setState(() {
+        _errorMessage = 'Enter the complete OTP';
+      });
       return;
     }
 
     if (phone == null || phone.isEmpty) {
-      AppToast.error('Phone number is missing');
+      setState(() {
+        _errorMessage = 'Phone number is missing';
+      });
       return;
     }
 
@@ -96,11 +113,9 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
       if (!mounted) {
         return;
       }
-      // Suppress toast here — errors are handled silently on this screen
-      // to avoid showing a Flutter toast during OTP verification.
-      // Optionally log to console for debugging:
-      // ignore: avoid_print
-      print('OTP verify error: $error');
+      setState(() {
+        _errorMessage = error.toString();
+      });
     }
   }
 
@@ -217,7 +232,20 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
                             ],
                           ],
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 14),
+                        if (_errorMessage.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 6.0),
+                            child: Text(
+                              _errorMessage,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.red,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        const SizedBox(height: 6),
                         Center(
                           child: GestureDetector(
                             onTap: authState.isLoading ? null : _resendOtp,
@@ -239,13 +267,15 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
                           width: double.infinity,
                           height: 52,
                           child: ElevatedButton.icon(
-                            onPressed: authState.isLoading
+                            onPressed: (authState.isLoading || !_isOtpComplete)
                                 ? null
                                 : () => _verifyAndContinue(phone),
-                            icon: const Icon(
+                            icon: Icon(
                               Icons.verified_outlined,
                               size: 18,
-                              color: Colors.white,
+                              color: _isOtpComplete
+                                  ? Colors.white
+                                  : Colors.white.withOpacity(0.5),
                             ),
                             label: authState.isLoading
                                 ? const SizedBox(
@@ -258,16 +288,20 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
                                       ),
                                     ),
                                   )
-                                : const Text(
+                                : Text(
                                     'Verify & Login',
                                     style: TextStyle(
                                       fontSize: 15,
                                       fontWeight: FontWeight.w500,
-                                      color: Colors.white,
+                                      color: _isOtpComplete
+                                          ? Colors.white
+                                          : Colors.white.withOpacity(0.5),
                                     ),
                                   ),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF0F2A47),
+                              backgroundColor: _isOtpComplete
+                                  ? const Color(0xFF0F2A47)
+                                  : const Color(0xFF0F2A47).withOpacity(0.5),
                               elevation: 0,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),

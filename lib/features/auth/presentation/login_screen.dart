@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../app/utils/app_toast.dart';
 import '../application/auth_provider.dart';
 import '../../../routes/app_router.dart';
 import 'widgets/auth_top_banner.dart';
@@ -16,6 +15,19 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final TextEditingController _phoneController = TextEditingController();
+  bool _isPhoneValid = false;
+  String _errorMessage = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _phoneController.addListener(() {
+      setState(() {
+        _isPhoneValid = _phoneController.text.trim().length == 10;
+        _errorMessage = '';
+      });
+    });
+  }
 
   @override
   void dispose() {
@@ -26,7 +38,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _goToOtp() async {
     final phone = _phoneController.text.trim();
     if (phone.length != 10) {
-      AppToast.error('Enter a valid 10-digit phone number');
+      setState(() {
+        _errorMessage = 'Please provide a valid phone number';
+      });
       return;
     }
 
@@ -42,7 +56,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         return;
       }
 
-      AppToast.error(error.toString());
+      setState(() {
+        _errorMessage = error.toString();
+      });
     }
   }
 
@@ -156,18 +172,35 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        const Text(
-                          "We'll send you an OTP to verify your number",
-                          style: TextStyle(fontSize: 12, color: Colors.black45),
-                        ),
+                        if (_errorMessage.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4.0),
+                            child: Text(
+                              _errorMessage,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.red,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          )
+                        else
+                          const Text(
+                            "We'll send you an OTP to verify your number",
+                            style: TextStyle(fontSize: 12, color: Colors.black45),
+                          ),
                         const SizedBox(height: 28),
                         SizedBox(
                           width: double.infinity,
                           height: 50,
                           child: ElevatedButton(
-                            onPressed: authState.isLoading ? null : _goToOtp,
+                            onPressed: (authState.isLoading || !_isPhoneValid)
+                                ? null
+                                : _goToOtp,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF0F2A47),
+                              backgroundColor: _isPhoneValid
+                                  ? const Color(0xFF0F2A47)
+                                  : const Color(0xFF0F2A47).withOpacity(0.5),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10),
                               ),
@@ -184,10 +217,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                       ),
                                     ),
                                   )
-                                : const Text(
+                                : Text(
                                     'Send OTP',
                                     style: TextStyle(
-                                      color: Colors.white,
+                                      color: _isPhoneValid
+                                          ? Colors.white
+                                          : Colors.white.withOpacity(0.5),
                                       fontSize: 16,
                                       fontWeight: FontWeight.w500,
                                     ),

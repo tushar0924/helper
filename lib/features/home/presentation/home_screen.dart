@@ -75,7 +75,6 @@ class _HelperTabViewState extends ConsumerState<HelperTabView>
     _scrollController.addListener(_handleScroll);
     Future.microtask(() {
       ref.invalidate(bannerProvider(null));
-      ref.read(homeBootstrapProvider.notifier).loadInitialLocation();
     });
   }
 
@@ -122,7 +121,6 @@ class _HelperTabViewState extends ConsumerState<HelperTabView>
   }
 
   Future<void> _refreshHomePage() async {
-    await ref.read(homeBootstrapProvider.notifier).loadInitialLocation();
     await ref
         .read(categoryControllerProvider.notifier)
         .loadCategories(forceRefresh: true);

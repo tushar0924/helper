@@ -14,6 +14,7 @@ class AuthRepository {
       AuthApiEndpoint.login,
       body: <String, dynamic>{'phone': phone},
       showSuccessToast: false,
+      showErrorToast: false,
     );
 
     final loginResponse = LoginResponse.fromJson(response);

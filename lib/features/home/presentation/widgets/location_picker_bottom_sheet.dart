@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'dart:async';
 
 import '../../../../app/utils/app_toast.dart';
 import '../../../home/application/address_provider.dart';
@@ -169,6 +170,29 @@ class _LocationPickerBottomSheetState
 
   Future<void> _openLocationSettings() async {
     await Geolocator.openLocationSettings();
+
+    if (!mounted) {
+      return;
+    }
+
+    for (var attempt = 0; attempt < 3; attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+      if (!mounted) {
+        return;
+      }
+
+      final enabled = await Geolocator.isLocationServiceEnabled();
+      if (!mounted) {
+        return;
+      }
+
+      if (enabled) {
+        await ref.read(homeBootstrapProvider.notifier).loadInitialLocation();
+        return;
+      }
+    }
+
+    await ref.read(homeBootstrapProvider.notifier).loadInitialLocation();
   }
 
   Future<void> _openSavedAddresses() async {
@@ -514,23 +538,6 @@ class _LocationPickerBottomSheetState
                   },
                 ),
               ),
-            if (hasMoreSavedAddresses) ...[
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: _openSavedAddresses,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF0B1F3A),
-                    side: const BorderSide(color: Color(0xFFD1D5DB)),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Text('View all saved addresses'),
-                ),
-              ),
-            ],
           ],
         ),
       ),
