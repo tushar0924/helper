@@ -850,8 +850,16 @@ class _ServiceCard extends ConsumerWidget {
                                   return;
                                 }
 
+                                final existingName =
+                                  cartState.summary?.items.isNotEmpty == true
+                                    ? cartState.summary!.items.first.name
+                                    : '';
                                 final shouldReplace =
-                                    await showReplaceCartItemDialog(context);
+                                  await showReplaceCartItemDialog(
+                                    context,
+                                    existingServiceName: existingName,
+                                    newServiceName: item.name,
+                                  );
                                 if (!context.mounted || !shouldReplace) {
                                   return;
                                 }

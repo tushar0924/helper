@@ -26,11 +26,6 @@ class _ApplyCouponScreenState extends ConsumerState<ApplyCouponScreen> {
   bool _isApplyingCouponSheetVisible = false;
   DateTime? _processingSheetShownAt;
 
-  @override
-  void initState() {
-    super.initState();
-  }
-
   Future<void> _onApplyCoupon(CouponModal coupon) async {
     if (!coupon.isApplicable ||
         _applyingCouponCode != null ||
@@ -257,6 +252,8 @@ class _ApplyCouponScreenState extends ConsumerState<ApplyCouponScreen> {
     final couponAsync = ref.watch(availableCouponsProvider);
     final appliedCouponsAsync = ref.watch(appliedCouponsProvider);
     final cartCoupon = ref.watch(cartProvider).summary?.coupon;
+    final isCouponDataLoading =
+        couponAsync.isLoading || appliedCouponsAsync.isLoading;
 
     final appliedCouponCodes = <String>{
       if (_appliedCouponCode != null) _appliedCouponCode!,
@@ -320,21 +317,26 @@ class _ApplyCouponScreenState extends ConsumerState<ApplyCouponScreen> {
           ),
           const SizedBox(height: 12),
           Expanded(
-            child: couponAsync.when(
-              loading: () => const _CouponListSkeleton(),
-              error: (error, stackTrace) => _CouponLoadError(
-                message: error.toString(),
-                onRetry: () => ref.invalidate(availableCouponsProvider),
-              ),
-              data: (data) => _CouponList(
-                couponData: data,
-                appliedCouponCodes: appliedCouponCodes,
-                applyingCouponCode: _applyingCouponCode,
-                removingCouponCode: _removingCouponCode,
-                onApplyCoupon: _onApplyCoupon,
-                onRemoveCoupon: _onRemoveCoupon,
-              ),
-            ),
+            child: isCouponDataLoading
+                ? const _CouponListSkeleton()
+                : couponAsync.when(
+                    loading: () => const _CouponListSkeleton(),
+                    error: (error, stackTrace) => _CouponLoadError(
+                      message: error.toString(),
+                      onRetry: () {
+                        ref.invalidate(availableCouponsProvider);
+                        ref.invalidate(appliedCouponsProvider);
+                      },
+                    ),
+                    data: (data) => _CouponList(
+                      couponData: data,
+                      appliedCouponCodes: appliedCouponCodes,
+                      applyingCouponCode: _applyingCouponCode,
+                      removingCouponCode: _removingCouponCode,
+                      onApplyCoupon: _onApplyCoupon,
+                      onRemoveCoupon: _onRemoveCoupon,
+                    ),
+                  ),
           ),
         ],
       ),

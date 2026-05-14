@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import '../../../app/utils/app_toast.dart';
+import '../../../app/widgets/skeleton_shimmer.dart';
 import '../../auth/application/auth_provider.dart';
 import '../application/cart_provider.dart';
 import '../application/coupon_provider.dart';
@@ -124,8 +125,8 @@ class _CartScreenState extends ConsumerState<CartScreen> {
           ),
         ),
       ),
-      body: state.isLoading
-          ? const Center(child: CircularProgressIndicator())
+        body: state.isLoading
+          ? const _CartScreenSkeleton()
           : RefreshIndicator(
               onRefresh: () {
                 ref.invalidate(appliedCouponsProvider);
@@ -249,19 +250,20 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                         appliedCouponsAsync: appliedCouponsAsync,
                         summary: summary,
                         onTapApplyCoupon: () async {
+                          ref.invalidate(availableCouponsProvider);
+                          ref.invalidate(appliedCouponsProvider);
+
                           final appliedCouponCode = await Navigator.of(context)
                               .push<String>(
                                 MaterialPageRoute<String>(
                                   builder: (_) => const ApplyCouponScreen(),
-                                        ),
-                                      );
-                                  // Ensure coupons are refetched when user taps Apply Coupon
-                                  ref.invalidate(availableCouponsProvider);
-                                  ref.invalidate(appliedCouponsProvider);
+                                ),
+                              );
                           if (!mounted) {
                             return;
                           }
 
+                          ref.invalidate(availableCouponsProvider);
                           ref.invalidate(appliedCouponsProvider);
                           await ref
                               .read(cartProvider.notifier)
@@ -425,9 +427,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
 
     final createdResult = result!;
 
-    if (createdResult.message.trim().isNotEmpty) {
-      AppToast.success(createdResult.message);
-    }
+    // Intentionally avoid success toast before partner acceptance.
 
     int? bookingId = createdResult.bookingId;
     var bookingRequestId = createdResult.bookingRequestId;
@@ -548,9 +548,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
           .getPartnerBooking(bookingId: bookingId);
       _partnerDetails = bookingDetails.toPartnerDetailsMap();
 
-      if (mounted) {
-        AppToast.success('Partner request accepted');
-      }
+      // Skip success toast on partner acceptance.
     } catch (error) {
       debugPrint('[BOOKING] Failed to load booking details: $error');
       if (mounted) {
@@ -1960,6 +1958,286 @@ class _EmptyCartState extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _CartScreenSkeleton extends StatelessWidget {
+  const _CartScreenSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+      child: Column(
+        children: const [
+          _CartServiceSkeletonTile(),
+          SizedBox(height: 10),
+          _CartServiceSkeletonTile(),
+          SizedBox(height: 10),
+          _CartServiceSkeletonTile(),
+          SizedBox(height: 6),
+          _ActionCardSkeleton(),
+          SizedBox(height: 10),
+          _SimpleCardSkeleton(lineCount: 3),
+          SizedBox(height: 10),
+          _SimpleCardSkeleton(lineCount: 2),
+          SizedBox(height: 10),
+          _CouponCardSkeleton(),
+          SizedBox(height: 10),
+          _BillCardSkeleton(),
+          SizedBox(height: 16),
+          _PrimaryButtonSkeleton(),
+        ],
+      ),
+    );
+  }
+}
+
+class _CartServiceSkeletonTile extends StatelessWidget {
+  const _CartServiceSkeletonTile();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SkeletonShimmerBox(
+            width: 66,
+            height: 66,
+            borderRadius: BorderRadius.all(Radius.circular(12)),
+          ),
+          SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SkeletonShimmerBox(
+                  height: 16,
+                  width: 180,
+                  borderRadius: BorderRadius.all(Radius.circular(6)),
+                ),
+                SizedBox(height: 10),
+                SkeletonShimmerBox(
+                  height: 12,
+                  width: 92,
+                  borderRadius: BorderRadius.all(Radius.circular(6)),
+                ),
+                SizedBox(height: 10),
+                SkeletonShimmerBox(
+                  height: 12,
+                  width: 140,
+                  borderRadius: BorderRadius.all(Radius.circular(6)),
+                ),
+                SizedBox(height: 14),
+                Row(
+                  children: [
+                    SkeletonShimmerBox(
+                      height: 28,
+                      width: 84,
+                      borderRadius: BorderRadius.all(Radius.circular(8)),
+                    ),
+                    SizedBox(width: 10),
+                    SkeletonShimmerBox(
+                      height: 28,
+                      width: 84,
+                      borderRadius: BorderRadius.all(Radius.circular(8)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActionCardSkeleton extends StatelessWidget {
+  const _ActionCardSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: const Row(
+        children: [
+          SkeletonShimmerBox(
+            height: 26,
+            width: 26,
+            borderRadius: BorderRadius.all(Radius.circular(8)),
+          ),
+          SizedBox(width: 10),
+          SkeletonShimmerBox(
+            height: 14,
+            width: 180,
+            borderRadius: BorderRadius.all(Radius.circular(6)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SimpleCardSkeleton extends StatelessWidget {
+  const _SimpleCardSkeleton({required this.lineCount});
+
+  final int lineCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final lines = List<Widget>.generate(
+      lineCount,
+      (index) => Padding(
+        padding: EdgeInsets.only(top: index == 0 ? 0 : 8),
+        child: SkeletonShimmerBox(
+          height: 12,
+          width: index == 0 ? 160 : double.infinity,
+          borderRadius: const BorderRadius.all(Radius.circular(6)),
+        ),
+      ),
+    );
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: lines,
+      ),
+    );
+  }
+}
+
+class _CouponCardSkeleton extends StatelessWidget {
+  const _CouponCardSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SkeletonShimmerBox(
+            height: 14,
+            width: 140,
+            borderRadius: BorderRadius.all(Radius.circular(6)),
+          ),
+          SizedBox(height: 10),
+          SkeletonShimmerBox(
+            height: 12,
+            width: 200,
+            borderRadius: BorderRadius.all(Radius.circular(6)),
+          ),
+          SizedBox(height: 12),
+          SkeletonShimmerBox(
+            height: 34,
+            borderRadius: BorderRadius.all(Radius.circular(10)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BillCardSkeleton extends StatelessWidget {
+  const _BillCardSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SkeletonShimmerBox(
+            height: 14,
+            width: 120,
+            borderRadius: BorderRadius.all(Radius.circular(6)),
+          ),
+          SizedBox(height: 12),
+          _BillRowSkeleton(),
+          SizedBox(height: 10),
+          _BillRowSkeleton(),
+          SizedBox(height: 10),
+          _BillRowSkeleton(),
+          SizedBox(height: 14),
+          SkeletonShimmerBox(
+            height: 1,
+            borderRadius: BorderRadius.all(Radius.circular(1)),
+          ),
+          SizedBox(height: 12),
+          _BillRowSkeleton(isBold: true),
+        ],
+      ),
+    );
+  }
+}
+
+class _BillRowSkeleton extends StatelessWidget {
+  const _BillRowSkeleton({this.isBold = false});
+
+  final bool isBold;
+
+  @override
+  Widget build(BuildContext context) {
+    final height = isBold ? 14.0 : 12.0;
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        SkeletonShimmerBox(
+          height: height,
+          width: 120,
+          borderRadius: const BorderRadius.all(Radius.circular(6)),
+        ),
+        SkeletonShimmerBox(
+          height: height,
+          width: 66,
+          borderRadius: const BorderRadius.all(Radius.circular(6)),
+        ),
+      ],
+    );
+  }
+}
+
+class _PrimaryButtonSkeleton extends StatelessWidget {
+  const _PrimaryButtonSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SkeletonShimmerBox(
+      height: 46,
+      borderRadius: BorderRadius.all(Radius.circular(12)),
     );
   }
 }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/utils/app_toast.dart';
+import '../../../app/widgets/skeleton_shimmer.dart';
 import '../../cart/application/cart_provider.dart';
 import '../../cart/modal/booking_details_modal.dart';
 import '../../cart/modal/cart_summary_modal.dart';
@@ -40,9 +42,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
 
     _navigatedToOtpScreen = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(
@@ -60,29 +60,34 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
   bool _shouldOpenOtpScreen(BookingDetailsModal booking) {
     final status = booking.status.toUpperCase();
     final hasOtp = booking.otpLabel != '----';
-    final isTerminal =
-        status.contains('COMPLETE') ||
+    final isTerminal = status.contains('COMPLETE') ||
         status.contains('CANCELLED') ||
         status.contains('CANCELED');
+    final isTrackingStage = status.contains('ARRIVE') ||
+        status.contains('START') ||
+        status.contains('ONGOING') ||
+        status.contains('ON THE WAY') ||
+        status.contains('INPROGRESS') ||
+        status.contains('IN_PROGRESS');
 
-    return hasOtp && !isTerminal;
+    return hasOtp && !isTerminal && isTrackingStage;
   }
 
   CartSummaryModal _buildSummaryFromBooking(BookingDetailsModal booking) {
     final items = booking.items
         .map(
           (item) => CartItemModal(
-            serviceId: item.serviceId,
-            name: item.serviceName,
-            imageUrl: item.imageUrl,
-            priceAtAdded: item.price,
-            originalPrice: item.price,
-            totalPrice: item.price * (item.quantity <= 0 ? 1 : item.quantity),
-            duration: item.duration,
-            quantity: item.quantity <= 0 ? 1 : item.quantity,
-            addons: const <Object?>[],
-          ),
-        )
+        serviceId: item.serviceId,
+        name: item.serviceName,
+        imageUrl: item.imageUrl,
+        priceAtAdded: item.price,
+        originalPrice: item.price,
+        totalPrice: item.price * (item.quantity <= 0 ? 1 : item.quantity),
+        duration: item.duration,
+        quantity: item.quantity <= 0 ? 1 : item.quantity,
+        addons: const <Object?>[],
+      ),
+    )
         .toList(growable: false);
 
     return CartSummaryModal(
@@ -97,8 +102,7 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
         label: booking.customer?.fullName.isNotEmpty == true
             ? booking.customer!.fullName
             : 'Service Location',
-        address:
-            booking.fullAddress ?? booking.address ?? booking.location ?? '',
+        address: booking.fullAddress ?? booking.address ?? booking.location ?? '',
         city: booking.city ?? '',
         pinCode: booking.pinCode ?? '',
         latitude: booking.latitude,
@@ -127,16 +131,23 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF7F8FA),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0B2A4A),
+        backgroundColor: const Color(0xFF0B2132), // Darker shade as per image
         elevation: 0,
+        centerTitle: false,
         title: const Text(
           'Booking Details',
           style: TextStyle(
             color: Colors.white,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w500,
             fontSize: 18,
           ),
         ),
+        actions: [
+          IconButton(
+            onPressed: () {},
+            icon: const Icon(Icons.more_vert, color: Colors.white),
+          )
+        ],
         leading: IconButton(
           onPressed: () => Navigator.of(context).pop(),
           icon: const Icon(Icons.arrow_back, color: Colors.white),
@@ -146,49 +157,24 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
         future: _bookingFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return _buildDetailsSkeleton();
+          }
+          if (snapshot.hasError || !snapshot.hasData) {
+            return Center(child: Text('Error loading details'));
           }
 
-          if (snapshot.hasError) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('Failed to load booking details'),
-                  const SizedBox(height: 12),
-                  ElevatedButton(
-                    onPressed: _refresh,
-                    child: const Text('Retry'),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          final booking = snapshot.data;
-          if (booking == null) {
-            return const Center(child: Text('Booking not found'));
-          }
-
-          if (_shouldOpenOtpScreen(booking)) {
-            return const Center(child: CircularProgressIndicator());
-          }
+          final booking = snapshot.data!;
 
           return SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 22),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
             child: Column(
               children: [
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: _buildStatusBadge(booking),
-                ),
-                const SizedBox(height: 16),
                 _buildServiceDetailsCard(booking),
-                const SizedBox(height: 14),
-                _buildBookingDetailsCard(booking),
-                const SizedBox(height: 14),
-                _buildHelperInfoCard(booking),
-                const SizedBox(height: 14),
+                const SizedBox(height: 20),
+                _buildBookingDetailCard(booking),
+                const SizedBox(height: 20),
+                _buildHelperCard(booking),
+                const SizedBox(height: 20),
                 _buildBillDetailsCard(booking),
               ],
             ),
@@ -198,301 +184,74 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
     );
   }
 
-  Widget _buildStatusBadge(BookingDetailsModal booking) {
-    Color backgroundColor = const Color(0xFFE7F8EC);
-    Color textColor = const Color(0xFF16A34A);
-    String statusLabel = 'Completed';
-
-    final normalized = booking.status.toUpperCase();
-
-    if (normalized.contains('CANCEL')) {
-      backgroundColor = const Color(0xFFFFE4E6);
-      textColor = const Color(0xFFEF4444);
-      statusLabel = 'Canceled';
-    } else if (normalized.contains('COMPLETE')) {
-      backgroundColor = const Color(0xFFE7F8EC);
-      textColor = const Color(0xFF16A34A);
-      statusLabel = 'Completed';
-    } else if (normalized.contains('CONFIRMED') ||
-        normalized.contains('PENDING') ||
-        normalized.contains('ACCEPTED')) {
-      backgroundColor = const Color(0xFFFFF3E0);
-      textColor = const Color(0xFFF97316);
-      statusLabel = 'Scheduled';
-    } else if (normalized.contains('PROGRESS') ||
-        normalized.contains('STARTED')) {
-      backgroundColor = const Color(0xFFEFF6FF);
-      textColor = const Color(0xFF2563EB);
-      statusLabel = 'In Progress';
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        statusLabel,
-        style: TextStyle(
-          color: textColor,
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildServiceDetailsCard(BookingDetailsModal booking) {
-    final serviceItems = booking.items;
-    final fallbackHours = booking.totalHours > 0
-        ? booking.totalHours
-        : booking.duration;
-    final totalHours = fallbackHours > 0
-        ? fallbackHours
-        : serviceItems.fold<int>(
-            0,
-            (sum, item) =>
-                sum +
-                ((item.quantity <= 0 ? 1 : item.quantity) * item.duration),
-          );
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE7EAF0)),
-      ),
+  Widget _buildDetailsSkeleton() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Text(
-                'Service Details',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF111827),
-                ),
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEAF4FF),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  booking.serviceDisplayName,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF0B6DD4),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (serviceItems.isNotEmpty)
-            ...serviceItems.map(
-              (item) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _buildServiceItem(
-                  item.serviceName,
-                  item.duration <= 1 ? '1 hour' : '${item.duration} hours',
-                ),
-              ),
-            )
-          else
-            _buildServiceItem(
-              booking.serviceDisplayName,
-              totalHours <= 1 ? '1 hour' : '$totalHours hours',
-            ),
-          const SizedBox(height: 10),
-          TextButton(
-            onPressed: () {},
-            style: TextButton.styleFrom(
-              padding: EdgeInsets.zero,
-              minimumSize: const Size(0, 0),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: const Text(
-              'Less',
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF6B7280),
-              ),
-            ),
-          ),
-          const Divider(height: 20, thickness: 1, color: Color(0xFFEAECEF)),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Total Service Hours',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF374151),
-                ),
-              ),
-              Text(
-                '${totalHours == 1 ? '1 hour' : '$totalHours hours'}',
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF374151),
-                ),
-              ),
-            ],
-          ),
+          _buildServiceDetailsCardSkeleton(),
+          const SizedBox(height: 20),
+          _buildBookingDetailCardSkeleton(),
+          const SizedBox(height: 20),
+          _buildHelperCardSkeleton(),
+          const SizedBox(height: 20),
+          _buildBillDetailsCardSkeleton(),
         ],
       ),
     );
   }
 
-  Widget _buildServiceItem(String name, String duration) {
-    return Row(
+  Widget _buildServiceDetailsCardSkeleton() {
+    return Stack(
+      clipBehavior: Clip.none,
+      alignment: Alignment.topCenter,
       children: [
-        const Padding(
-          padding: EdgeInsets.only(left: 4),
-          child: Icon(Icons.circle, size: 5, color: Color(0xFF111827)),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            name,
-            style: const TextStyle(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF111827),
-            ),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFE7EAF0), width: 1.5),
           ),
-        ),
-        Text(
-          duration,
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF6B7280),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildBookingDetailsCard(BookingDetailsModal booking) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE7EAF0)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Booking detail',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF111827),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Booking ID: ${booking.id}',
-            style: const TextStyle(
-              fontSize: 12,
-              color: Color(0xFF9CA3AF),
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 10),
-          const Divider(height: 1, thickness: 1, color: Color(0xFFF1F5F9)),
-          const SizedBox(height: 14),
-          _buildDetailRow(
-            'Date',
-            value: booking.displayDateLabel,
-            icon: Icons.calendar_today_outlined,
-          ),
-          const SizedBox(height: 12),
-          _buildDetailRow(
-            'Time & Duration',
-            value:
-                '${booking.displayTimeLabel} • ${(booking.totalHours > 0 ? booking.totalHours : booking.duration)} hours',
-            icon: Icons.access_time_outlined,
-          ),
-          const SizedBox(height: 12),
-          _buildDetailRow(
-            'Service Location',
-            value: booking.fullAddress ?? booking.address ?? 'Your Location',
-            icon: Icons.location_on_outlined,
-            subtitle: [
-              booking.city,
-              booking.pinCode,
-            ].whereType<String>().where((e) => e.trim().isNotEmpty).join(', '),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDetailRow(
-    String title, {
-    required String value,
-    IconData? icon,
-    String? subtitle,
-  }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (icon != null) ...[
-          Icon(icon, size: 17, color: const Color(0xFF1E88E5)),
-          const SizedBox(width: 10),
-        ],
-        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF94A3B8),
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF334155),
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              if (subtitle != null) ...[
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: Color(0xFF6B7280),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Service Details',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
+                  SkeletonShimmerBox(
+                    height: 24,
+                    width: 100,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              ...List.generate(3, (i) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: SkeletonShimmerBox(
+                  height: 16,
+                  borderRadius: BorderRadius.circular(4),
                 ),
-              ],
+              )),
+              const SizedBox(height: 8),
+              SkeletonShimmerBox(
+                height: 24,
+                width: 80,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              const SizedBox(height: 16),
+              const Divider(color: Color(0xFFF1F5F9)),
+              const SizedBox(height: 8),
+              SkeletonShimmerBox(
+                height: 16,
+                borderRadius: BorderRadius.circular(4),
+              ),
             ],
           ),
         ),
@@ -500,213 +259,513 @@ class _BookingDetailScreenState extends ConsumerState<BookingDetailScreen> {
     );
   }
 
-  Widget _buildHelperInfoCard(BookingDetailsModal booking) {
-    final helper = booking.helper;
-    final user = helper?.user;
-
+  Widget _buildBookingDetailCardSkeleton() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xFFE7EAF0)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Helper Information',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF111827),
-            ),
+          const Text('Booking detail', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          SkeletonShimmerBox(
+            height: 12,
+            width: 150,
+            borderRadius: BorderRadius.circular(4),
           ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1F2937),
-                  borderRadius: BorderRadius.circular(100),
+          const SizedBox(height: 16),
+          const Divider(color: Color(0xFFF1F5F9)),
+          const SizedBox(height: 16),
+          ...List.generate(3, (i) => Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SkeletonShimmerBox(
+                  height: 12,
+                  width: 80,
+                  borderRadius: BorderRadius.circular(4),
                 ),
-                child: user?.profileImage != null
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(100),
-                        child: Image.network(
-                          user!.profileImage!,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) =>
-                              const Icon(Icons.person, color: Colors.white),
-                        ),
-                      )
-                    : const Icon(Icons.person, color: Colors.white),
+                const SizedBox(height: 4),
+                SkeletonShimmerBox(
+                  height: 14,
+                  width: 200,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ],
+            ),
+          )),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHelperCardSkeleton() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE7EAF0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Helper Information', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 16),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SkeletonShimmerBox(
+                height: 48,
+                width: 48,
+                borderRadius: BorderRadius.circular(24),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      helper?.displayName ?? 'Helper',
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF111827),
-                      ),
+                    SkeletonShimmerBox(
+                      height: 15,
+                      width: 150,
+                      borderRadius: BorderRadius.circular(4),
                     ),
+                    const SizedBox(height: 8),
+                    SkeletonShimmerBox(
+                      height: 12,
+                      width: 200,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBillDetailsCardSkeleton() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE7EAF0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Bill Details', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 16),
+          ...List.generate(3, (i) => Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                SkeletonShimmerBox(
+                  height: 12,
+                  width: 80,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                SkeletonShimmerBox(
+                  height: 12,
+                  width: 80,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ],
+            ),
+          )),
+          const SizedBox(height: 8),
+          const Divider(color: Color(0xFFF1F5F9)),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              SkeletonShimmerBox(
+                height: 14,
+                width: 100,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              SkeletonShimmerBox(
+                height: 16,
+                width: 100,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ],
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildServiceDetailsCard(BookingDetailsModal booking) {
+    final status = booking.status.toUpperCase();
+    final isCompleted = status.contains('COMPLETE');
+    final isConfirmed = status.contains('CONFIRM');
+    final isCancelled = status.contains('CANCEL');
+    final showStatusBadge = isCompleted || isConfirmed || isCancelled;
+    
+    late Color borderColor;
+    late Color badgeColor;
+    late String badgeLabel;
+    
+    if (isCancelled) {
+      borderColor = const Color(0xFFEF4444);
+      badgeColor = const Color(0xFFEF4444);
+      badgeLabel = 'Cancelled';
+    } else if (isCompleted) {
+      borderColor = const Color(0xFF22C55E);
+      badgeColor = const Color(0xFF00C853);
+      badgeLabel = 'Completed';
+    } else if (isConfirmed) {
+      borderColor = const Color(0xFF22C55E);
+      badgeColor = const Color(0xFF00C853);
+      badgeLabel = 'Confirmed';
+    } else {
+      borderColor = const Color(0xFFE7EAF0);
+      badgeColor = const Color(0xFF00C853);
+      badgeLabel = booking.statusDisplayLabel;
+    }
+    
+    final serviceRows = booking.items.isNotEmpty
+        ? booking.items
+        : <BookingItemModal>[];
+
+    return Stack(
+      clipBehavior: Clip.none,
+      alignment: Alignment.topCenter,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: borderColor, width: 1.5),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Service Details',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEAF2FF),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      booking.serviceLabel,
+                      style: const TextStyle(color: Color(0xFF2563EB), fontSize: 11, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              if (serviceRows.isNotEmpty)
+                ...serviceRows.map(
+                  (item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.circle, size: 6, color: Color(0xFF0F172A)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            item.serviceName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              decoration: TextDecoration.underline,
+                              decorationStyle: TextDecorationStyle.dashed,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          _formatDurationLabel(item.duration),
+                          style: const TextStyle(color: Colors.grey, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.circle, size: 6, color: Color(0xFF0F172A)),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          'Service details unavailable',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF111827),
+                          ),
+                        ),
+                      ),
+                      Text(
+                        booking.totalServiceHoursLabel,
+                        style: const TextStyle(color: Colors.grey, fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text('Less', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+              ),
+              const SizedBox(height: 16),
+              const Divider(color: Color(0xFFF1F5F9)),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Total Service Hours', style: TextStyle(fontWeight: FontWeight.w500)),
+                  Text(
+                    booking.totalServiceHoursLabel,
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                ],
+              )
+            ],
+          ),
+        ),
+        if (showStatusBadge)
+          Positioned(
+            top: -14,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
+              decoration: BoxDecoration(
+                color: badgeColor,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                badgeLabel,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildBookingDetailCard(BookingDetailsModal booking) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE7EAF0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Booking detail', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          Text('Booking ID: ${booking.id}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+          const SizedBox(height: 16),
+          const Divider(color: Color(0xFFF1F5F9)),
+          const SizedBox(height: 16),
+          _detailItem(Icons.calendar_today_outlined, 'Date', booking.displayDateLabel),
+          const SizedBox(height: 16),
+          _detailItem(Icons.access_time, 'Time & Duration', booking.bookingTimeAndDurationLabel),
+          const SizedBox(height: 16),
+          _detailItem(Icons.location_on_outlined, 'Service Location', 'Your Location', subValue: booking.locationLabel),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailItem(IconData icon, String label, String value, {String? subValue}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: Colors.lightBlue, size: 20),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+              Text(value, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14)),
+              if (subValue != null) Text(subValue, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+            ],
+          ),
+        )
+      ],
+    );
+  }
+
+  Widget _buildHelperCard(BookingDetailsModal booking) {
+    final helper = booking.helper;
+    final helperName = helper?.displayName.trim().isNotEmpty == true
+        ? helper!.displayName
+        : (booking.customer?.fullName.trim().isNotEmpty == true
+            ? booking.customer!.fullName
+            : 'Helper Assigned Soon');
+    final helperRating = helper?.rating ?? 4.8;
+    final helperReviews = helper?.totalRatings ?? 250;
+    final imageUrl = helper?.user?.profileImage?.trim().isNotEmpty == true
+        ? helper!.user!.profileImage
+        : helper?.profileImage?.trim().isNotEmpty == true
+            ? helper!.profileImage
+            : null;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE7EAF0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Helper Information', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 16),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                radius: 24,
+                backgroundColor: const Color(0xFF0B2132),
+                backgroundImage: imageUrl != null ? NetworkImage(imageUrl) : null,
+                child: imageUrl == null ? const Icon(Icons.person, color: Colors.white) : null,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(helperName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        const Icon(
-                          Icons.star,
-                          size: 14,
-                          color: Color(0xFFF59E0B),
-                        ),
+                        const Icon(Icons.star, color: Colors.orange, size: 16),
                         const SizedBox(width: 4),
-                        Text(
-                          '${helper?.rating.toStringAsFixed(1) ?? '0.0'} (${helper?.totalRatings ?? 0}+ reviews)',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Color(0xFF6B7280),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
+                        Text('$helperRating ($helperReviews+ reviews)', style: const TextStyle(color: Colors.grey, fontSize: 12)),
                       ],
                     ),
                   ],
                 ),
               ),
             ],
-          ),
+          )
         ],
       ),
     );
   }
 
   Widget _buildBillDetailsCard(BookingDetailsModal booking) {
-    final amountToShow = booking.finalAmount;
-    final taxToShow = booking.tax < 0 ? booking.tax.abs() : booking.tax;
-    final itemTotal = booking.totalAmount <= 0
-        ? amountToShow
-        : booking.totalAmount;
-    final discountAmount = (itemTotal + taxToShow) - amountToShow;
-    final normalizedDiscount = discountAmount > 0 ? discountAmount : 0;
-
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xFFE7EAF0)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Bill Details',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF111827),
-            ),
-          ),
-          const SizedBox(height: 12),
+          const Text('Bill Details', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 16),
+          _billRow('Item Total', '₹${booking.totalAmount}'),
+          _billRow('Tax & fare', '₹${booking.tax}', isDashed: true),
+          _billRow('Discount', '-₹${(booking.totalAmount + booking.tax) - booking.finalAmount}', color: Colors.green),
+          const SizedBox(height: 8),
+          const Divider(color: Color(0xFFF1F5F9)),
+          const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Item Total',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF6B7280),
-                ),
-              ),
-              Text(
-                '₹${itemTotal.abs()}',
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF111827),
-                ),
-              ),
+              const Text('Total Amount', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              Text('₹${booking.finalAmount}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Tax & Fare',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF6B7280),
-                ),
-              ),
-              Text(
-                '₹${taxToShow.abs()}',
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF111827),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Discount',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF10B981),
-                ),
-              ),
-              Text(
-                '-₹$normalizedDiscount',
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF10B981),
-                ),
-              ),
-            ],
-          ),
-          Container(
-            margin: const EdgeInsets.symmetric(vertical: 12),
-            height: 1,
-            color: const Color(0xFFE5E7EB),
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Total Amount',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF111827),
-                ),
-              ),
-              Text(
-                '₹${amountToShow.abs()}',
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF111827),
-                ),
-              ),
-            ],
-          ),
+          )
         ],
       ),
     );
+  }
+
+  Widget _billRow(String label, String value, {Color? color, bool isDashed = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: color ?? Colors.black54,
+              decoration: isDashed ? TextDecoration.underline : null,
+              decorationStyle: isDashed ? TextDecorationStyle.dashed : null,
+            ),
+          ),
+          Text(value, style: TextStyle(fontWeight: FontWeight.bold, color: color ?? Colors.black)),
+        ],
+      ),
+    );
+  }
+
+  Widget _contactActionButton({
+    required IconData icon,
+    required Color backgroundColor,
+    required Color iconColor,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 38,
+        height: 38,
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, size: 18, color: iconColor),
+      ),
+    );
+  }
+
+  String _formatDurationLabel(int duration) {
+    if (duration <= 0) {
+      return '1 hour';
+    }
+
+    return duration == 1 ? '1 hour' : '$duration hours';
+  }
+
+  String _formatTotalHoursLabel(int totalHours) {
+    if (totalHours <= 0) {
+      return 'Duration unavailable';
+    }
+
+    return totalHours == 1 ? '1 hour 30 minutes' : '$totalHours hours 30 minutes';
   }
 }

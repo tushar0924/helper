@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../app/widgets/skeleton_shimmer.dart';
 import '../../cart/modal/booking_details_modal.dart';
 import '../../cart/modal/cart_summary_modal.dart';
 import '../../cart/presentation/booking_tracking_screen.dart';
@@ -73,7 +75,7 @@ class _BookingsOrdersScreenState extends ConsumerState<BookingsOrdersScreen> {
           style: TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.w500,
-            fontSize: 14,
+            fontSize: 18,
           ),
         ),
         leading: IconButton(
@@ -227,7 +229,7 @@ class _BookingsOrdersScreenState extends ConsumerState<BookingsOrdersScreen> {
       future: _future,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return _buildSkeletonLoading();
         }
         if (snapshot.hasError) {
           return Center(
@@ -274,6 +276,89 @@ class _BookingsOrdersScreenState extends ConsumerState<BookingsOrdersScreen> {
           },
         );
       },
+    );
+  }
+
+  Widget _buildSkeletonLoading() {
+    return ListView.separated(
+      itemCount: 5,
+      separatorBuilder: (_, __) => const SizedBox(height: 14),
+      itemBuilder: (context, index) => _buildBookingCardSkeleton(),
+    );
+  }
+
+  Widget _buildBookingCardSkeleton() {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 162),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFDDE3EA)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            decoration: const BoxDecoration(
+              color: Color(0xFFF3F4F6),
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(14),
+                topRight: Radius.circular(14),
+              ),
+            ),
+            padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                SkeletonShimmerBox(
+                  height: 34,
+                  width: 34,
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: SkeletonShimmerBox(
+                    height: 16,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                SkeletonShimmerBox(
+                  height: 18,
+                  width: 60,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, thickness: 1, color: Color(0xFFF0F2F5)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SkeletonShimmerBox(
+                  height: 14,
+                  width: double.infinity,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                const SizedBox(height: 10),
+                SkeletonShimmerBox(
+                  height: 14,
+                  width: 200,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                const SizedBox(height: 10),
+                SkeletonShimmerBox(
+                  height: 14,
+                  width: 150,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -365,7 +450,7 @@ class _BookingsOrdersScreenState extends ConsumerState<BookingsOrdersScreen> {
                     ),
                     const SizedBox(height: 10),
                     _BookingMetaRow(
-                      icon: Icons.currency_rupee,
+                      svgAssetPath: 'assets/images/ruppee.svg',
                       text: '₹${b.finalAmount.abs()}',
                     ),
                     if (status.showRatings) ...[
@@ -583,16 +668,34 @@ class _BookingStatusPill extends StatelessWidget {
 }
 
 class _BookingMetaRow extends StatelessWidget {
-  const _BookingMetaRow({required this.icon, required this.text});
+  const _BookingMetaRow({
+    required this.text,
+    this.icon,
+    this.svgAssetPath,
+  });
 
-  final IconData icon;
+  final IconData? icon;
+  final String? svgAssetPath;
   final String text;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, size: 16, color: const Color(0xFF9CA3AF)),
+        if (svgAssetPath != null)
+          SvgPicture.asset(
+            svgAssetPath!,
+            width: 16,
+            height: 16,
+            colorFilter: const ColorFilter.mode(
+              Color(0xFF9CA3AF),
+              BlendMode.srcIn,
+            ),
+          )
+        else if (icon != null)
+          Icon(icon, size: 16, color: const Color(0xFF9CA3AF))
+        else
+          const SizedBox(width: 16),
         const SizedBox(width: 9),
         Expanded(
           child: Text(

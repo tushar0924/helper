@@ -1,6 +1,16 @@
 import 'package:flutter/material.dart';
 
-Future<bool> showReplaceCartItemDialog(BuildContext context) async {
+Future<bool> showReplaceCartItemDialog(
+  BuildContext context, {
+  required String existingServiceName,
+  required String newServiceName,
+}) async {
+  final existingName = existingServiceName.trim().isEmpty
+      ? 'current service'
+      : existingServiceName.trim();
+  final nextName = newServiceName.trim().isEmpty
+      ? 'selected service'
+      : newServiceName.trim();
   final result = await showDialog<bool>(
     context: context,
     barrierDismissible: true,
@@ -31,26 +41,26 @@ Future<bool> showReplaceCartItemDialog(BuildContext context) async {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  const Text.rich(
+                  Text.rich(
                     TextSpan(
                       children: [
-                        TextSpan(text: 'Your cart contains Service from '),
+                        const TextSpan(text: 'Your cart contains Service from '),
                         TextSpan(
-                          text: 'Cleaning\nservice',
-                          style: TextStyle(fontWeight: FontWeight.w700),
+                          text: '$existingName\nservice',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
-                        TextSpan(
+                        const TextSpan(
                           text:
                               '. Do you want to discard and add Service\nfrom ',
                         ),
                         TextSpan(
-                          text: 'Care Service',
-                          style: TextStyle(fontWeight: FontWeight.w700),
+                          text: nextName,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
                       ],
                     ),
                     textAlign: TextAlign.center,
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: Color(0xFF111827),
                       fontSize: 16,
                       height: 1.45,

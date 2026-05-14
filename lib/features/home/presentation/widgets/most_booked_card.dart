@@ -131,8 +131,14 @@ class MostBookedCard extends ConsumerWidget {
                     return;
                   }
 
+                  final existingName =
+                      cartState.summary?.items.isNotEmpty == true
+                          ? cartState.summary!.items.first.name
+                          : '';
                   final shouldReplace = await showReplaceCartItemDialog(
                     context,
+                    existingServiceName: existingName,
+                    newServiceName: title,
                   );
                   if (!context.mounted || !shouldReplace) {
                     return;

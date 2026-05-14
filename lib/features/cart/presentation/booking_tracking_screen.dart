@@ -73,21 +73,11 @@ class _BookingTrackingScreenState extends ConsumerState<BookingTrackingScreen> {
     final summary = widget.summary;
     final bookingDetails = _bookingDetails ?? widget.bookingDetails;
     final arrival = _arrival ?? bookingDetails?.arrival;
-    final partnerName =
-        bookingDetails?.helper?.displayName ??
-        widget.partnerDetails['name'] ??
-        'Partner';
-    final partnerPhone =
-        bookingDetails?.helper?.user?.phone ??
-        widget.partnerDetails['phone'] ??
-        '';
     final bookingOtp = bookingDetails?.otpLabel ?? '----';
-      final bookingLocation = _bookingLocation(bookingDetails);
-      final helperLocation = _helperLocation(arrival);
-      final showMap = _shouldShowMap(arrival, helperLocation);
-      final statusTitle = _trackingTitle(arrival, bookingDetails);
-      final statusMessage = _trackingMessage(arrival, bookingDetails);
-      final etaLabel = _etaLabel(arrival);
+    final bookingLocation = _bookingLocation(bookingDetails);
+    final helperLocation = _helperLocation(arrival);
+    final showMap = _shouldShowMap(arrival, helperLocation);
+    final etaLabel = _etaLabel(arrival);
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -169,37 +159,17 @@ class _BookingTrackingScreenState extends ConsumerState<BookingTrackingScreen> {
         child: Column(
           children: [
             const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE5E7EB)),
-                ),
+            if (showMap && bookingLocation != null && helperLocation != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      statusTitle,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF0F172A),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      statusMessage,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF475569),
-                      ),
+                    _MapSection(
+                      userLocation: bookingLocation,
+                      partnerLocation: helperLocation,
                     ),
                     if (etaLabel.isNotEmpty) ...[
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 10),
                       Text(
                         etaLabel,
                         style: const TextStyle(
@@ -211,36 +181,13 @@ class _BookingTrackingScreenState extends ConsumerState<BookingTrackingScreen> {
                     ],
                   ],
                 ),
-              ),
-            ),
-            const SizedBox(height: 14),
-
-            if (showMap && bookingLocation != null && helperLocation != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: _MapSection(
-                  userLocation: bookingLocation,
-                  partnerLocation: helperLocation,
-                ),
               )
             else
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFE5E7EB)),
-                  ),
-                  child: Text(
-                    _mapHint(arrival),
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFF475569),
-                    ),
-                  ),
+                child: _LockedMapSection(
+                  userLocation: bookingLocation ?? _fallbackLocation,
+                  message: _mapHint(arrival),
                 ),
               ),
 
@@ -632,56 +579,6 @@ class _BookingTrackingScreenState extends ConsumerState<BookingTrackingScreen> {
     return LatLng(helperLocation.lat, helperLocation.lng);
   }
 
-  String _trackingTitle(BookingArrivalModal? arrival, BookingDetailsModal? details) {
-    if (details == null) {
-      return 'Tracking unavailable';
-    }
-
-    if (arrival == null) {
-      return 'Tracking OFF';
-    }
-
-    if (!arrival.trackingEnabled) {
-      return 'Tracking OFF';
-    }
-
-    switch (arrival.arrivalState) {
-      case 'ARRIVING':
-        return 'Helper is on the way';
-      case 'DELAYED':
-        return 'Running late';
-      case 'ARRIVED':
-        return 'Partner arrived';
-      default:
-        return 'Live tracking';
-    }
-  }
-
-  String _trackingMessage(BookingArrivalModal? arrival, BookingDetailsModal? details) {
-    if (details == null) {
-      return 'Loading booking details...';
-    }
-
-    if (arrival == null) {
-      return 'Live tracking will appear only when the booking becomes trackable.';
-    }
-
-    if (!arrival.trackingEnabled) {
-      return 'The backend has disabled tracking for this booking.';
-    }
-
-    switch (arrival.arrivalState) {
-      case 'ARRIVING':
-        return 'Helper is approaching. Live map will appear once they are within 30 minutes.';
-      case 'DELAYED':
-        return 'Helper is delayed. Keep an eye on the live map and ETA updates.';
-      case 'ARRIVED':
-        return 'Partner has arrived at the location.';
-      default:
-        return 'Tracking is enabled. Live updates will appear from the backend.';
-    }
-  }
-
   String _etaLabel(BookingArrivalModal? arrival) {
     final etaSeconds = arrival?.etaSeconds;
     if (etaSeconds == null) {
@@ -708,11 +605,11 @@ class _BookingTrackingScreenState extends ConsumerState<BookingTrackingScreen> {
 
   String _mapHint(BookingArrivalModal? arrival) {
     if (arrival == null) {
-      return 'Map will appear once tracking data is available.';
+      return 'Live tracking will appear only when the booking becomes trackable.';
     }
 
     if (!arrival.trackingEnabled) {
-      return 'Tracking is disabled for this booking.';
+      return 'Live tracking will appear only when the booking becomes trackable.';
     }
 
     if (arrival.arrivalState == 'ARRIVED') {
@@ -724,7 +621,7 @@ class _BookingTrackingScreenState extends ConsumerState<BookingTrackingScreen> {
       return 'Live map will show when the helper is within 30 minutes of arrival.';
     }
 
-    return 'Waiting for live location updates from the backend.';
+    return 'Live tracking will appear only when the booking becomes trackable.';
   }
 
   bool _isTerminalStatus(String status) {
@@ -1087,6 +984,146 @@ class _MapSection extends StatelessWidget {
   }
 }
 
+class _LockedMapSection extends StatelessWidget {
+  const _LockedMapSection({
+    required this.userLocation,
+    required this.message,
+  });
+
+  final LatLng userLocation;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        height: 250,
+        child: Stack(
+          children: [
+            GoogleMap(
+              initialCameraPosition: CameraPosition(
+                target: userLocation,
+                zoom: 15,
+              ),
+              markers: <Marker>{
+                Marker(
+                  markerId: const MarkerId('user'),
+                  position: userLocation,
+                  infoWindow: const InfoWindow(title: 'Your Location'),
+                ),
+              },
+              myLocationButtonEnabled: false,
+              zoomControlsEnabled: false,
+              compassEnabled: false,
+              mapToolbarEnabled: false,
+              scrollGesturesEnabled: false,
+              zoomGesturesEnabled: false,
+              rotateGesturesEnabled: false,
+              tiltGesturesEnabled: false,
+            ),
+            Container(color: Colors.black.withOpacity(0.28)),
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 22),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.94),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x22000000),
+                        blurRadius: 14,
+                        offset: Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 34,
+                        height: 34,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Color(0xFFEFF6FF),
+                        ),
+                        child: const Icon(
+                          Icons.lock_outline,
+                          size: 18,
+                          color: Color(0xFF0B6DD4),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Flexible(
+                        child: Text(
+                          message,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            height: 1.35,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const Positioned(
+              left: 12,
+              bottom: 12,
+              child: _MapLocationPill(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MapLocationPill extends StatelessWidget {
+  const _MapLocationPill();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.94),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1A000000),
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.location_on, size: 15, color: Color(0xFF0B6DD4)),
+          SizedBox(width: 5),
+          Text(
+            'Your Location',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF334155),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ContactButtonsSection extends StatelessWidget {
   const _ContactButtonsSection({required this.partnerPhone});
 
@@ -1140,10 +1177,12 @@ class _PartnerInfoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final name = partnerDetails['name'] ?? 'Partner';
     final rating = partnerDetails['rating'] ?? '5.0';
+    final totalRatings = partnerDetails['totalRatings'] ?? 0;
     final experience = partnerDetails['experience'] ?? '5+ years experience';
+    final profileImage = partnerDetails['profileImage'] as String?;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -1152,76 +1191,117 @@ class _PartnerInfoCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CircleAvatar(
-            radius: 22,
-            backgroundColor: const Color(0xFFE5E7EB),
-            child: const Icon(Icons.person, size: 26, color: Color(0xFF6B7280)),
+          // Profile Image
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFFF3F4F6),
+            ),
+            child: profileImage != null && profileImage.isNotEmpty
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(26),
+                    child: Image.network(
+                      profileImage,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const Icon(
+                        Icons.person,
+                        size: 28,
+                        color: Color(0xFF9CA3AF),
+                      ),
+                    ),
+                  )
+                : const Icon(
+                    Icons.person,
+                    size: 28,
+                    color: Color(0xFF9CA3AF),
+                  ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
+          // Name, Rating, Experience and Badges
           Expanded(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Name
                 Text(
                   name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 15,
+                    fontSize: 14,
                     fontWeight: FontWeight.w700,
                     color: Color(0xFF111827),
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 4),
+                // Star Rating
                 Row(
                   children: [
-                    const Icon(Icons.star, size: 14, color: Color(0xFFF59E0B)),
+                    const Icon(Icons.star, size: 14, color: Color(0xFFFCD34D)),
                     const SizedBox(width: 4),
                     Text(
-                      rating.toString(),
+                      '${rating.toString()}',
                       style: const TextStyle(
                         fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w700,
                         color: Color(0xFF111827),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 3),
+                // Experience
                 Text(
-                  experience,
+                  '$experience+ years experience',
                   style: const TextStyle(
                     fontSize: 11,
                     color: Color(0xFF6B7280),
                   ),
                 ),
-                const SizedBox(height: 3),
-                Row(
+                const SizedBox(height: 5),
+                // Badges
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: 14,
-                      height: 14,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF10B981),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.check,
-                        size: 10,
-                        color: Colors.white,
-                      ),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.check_circle,
+                          size: 14,
+                          color: Color(0xFF16A34A),
+                        ),
+                        const SizedBox(width: 5),
+                        const Text(
+                          'Verified Partner',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF16A34A),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 5),
-                    const Icon(
-                      Icons.verified,
-                      size: 12,
-                      color: Color(0xFF10B981),
-                    ),
-                    const SizedBox(width: 4),
-                    const Text(
-                      'Police Verified & Trained',
-                      style: TextStyle(fontSize: 10.5, color: Color(0xFF10B981)),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.check_circle,
+                          size: 14,
+                          color: Color(0xFF16A34A),
+                        ),
+                        const SizedBox(width: 5),
+                        const Text(
+                          'Helperdu Trusted & Trained',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF16A34A),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -1229,16 +1309,16 @@ class _PartnerInfoCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
+          // Action Buttons
           Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _PartnerActionButton(
                     icon: Icons.call,
-                    backgroundColor: const Color(0xFF111827),
+                    backgroundColor: const Color(0xFF0F2741),
                     iconColor: Colors.white,
                     onTap: () => AppToast.success('Call feature coming soon'),
                   ),
@@ -1304,55 +1384,58 @@ class _OtpCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFEAF3FF),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFAED7FF)),
+        color: const Color(0xFFF0F9FF),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF7DD3FC), width: 2),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Center(
-            child: Text(
-              'Verification OTP',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF6B7280),
-              ),
+          const Text(
+            'Verification OTP',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF64748B),
             ),
           ),
-          const SizedBox(height: 10),
-          Center(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Text(
-                  otp,
-                  style: const TextStyle(
-                    fontSize: 38,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF111827),
-                    letterSpacing: 6,
-                  ),
+          const SizedBox(height: 14),
+          // OTP Display
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                otp,
+                style: const TextStyle(
+                  fontSize: 42,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1E293B),
+                  letterSpacing: 3,
                 ),
-                const SizedBox(width: 10),
-                const Icon(
+              ),
+              const SizedBox(width: 12),
+              GestureDetector(
+                onTap: () {
+                  AppToast.success('OTP copied to clipboard');
+                },
+                child: const Icon(
                   Icons.copy_outlined,
                   size: 20,
-                  color: Color(0xFF9CA3AF),
+                  color: Color(0xFF94A3B8),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-          const SizedBox(height: 10),
-          const Center(
-            child: Text(
-              'Share this OTP with your helper when they arrive',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+          const SizedBox(height: 12),
+          // Instructions
+          const Text(
+            'Share this OTP with your helper when they arrive',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 12,
+              color: Color(0xFF64748B),
+              height: 1.4,
             ),
           ),
         ],

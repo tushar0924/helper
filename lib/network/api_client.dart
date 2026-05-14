@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../app/utils/app_navigator.dart';
 import '../app/utils/app_toast.dart';
 import '../session/session_manager.dart';
 import 'api_endpoint.dart';
@@ -12,6 +13,7 @@ class ApiClient {
 
   final http.Client _client;
   final SessionManager _sessionManager;
+  static bool _isHandlingUnauthorized = false;
 
   Future<Map<String, dynamic>> getJson(
     String path, {
@@ -196,6 +198,15 @@ class ApiClient {
       return <String, dynamic>{'data': decoded};
     }
 
+    if (response.statusCode == 401) {
+      _handleUnauthorized();
+      throw ApiException(
+        message: message ?? 'Unauthorized',
+        statusCode: response.statusCode,
+        responseBody: response.body,
+      );
+    }
+
     if (showErrorToast && message != null && message.trim().isNotEmpty) {
       AppToast.error(message);
     }
@@ -225,6 +236,19 @@ class ApiClient {
       return decoded;
     }
     return null;
+  }
+
+  void _handleUnauthorized() {
+    if (_isHandlingUnauthorized) {
+      return;
+    }
+
+    _isHandlingUnauthorized = true;
+    Future<void>.microtask(() async {
+      await _sessionManager.clearSession();
+      await AppNavigator.forceLogout(message: 'Your session is expired');
+      _isHandlingUnauthorized = false;
+    });
   }
 
   void _logRequest({

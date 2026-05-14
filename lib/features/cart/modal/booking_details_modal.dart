@@ -246,6 +246,7 @@ class BookingDetailsModal {
       'name': helper?.displayName ?? 'Partner',
       'phone': helper?.phone ?? '',
       'rating': helper?.rating ?? 0,
+      'totalRatings': helper?.totalRatings ?? 0,
       'experience': helper?.experience ?? '',
       'profileImage': helper?.profileImage ?? '',
       'bookingId': id,
@@ -255,6 +256,86 @@ class BookingDetailsModal {
   }
 
   String get statusLabel => _toTitleCase(status);
+
+  String get statusDisplayLabel {
+    final label = statusLabel.trim();
+    return label.isEmpty ? 'Status unavailable' : label;
+  }
+
+  String get serviceLabel {
+    final label = serviceDisplayName.trim();
+    if (label.isNotEmpty) {
+      return label;
+    }
+
+    final summary = itemsSummary?.serviceNames.trim();
+    if (summary != null && summary.isNotEmpty) {
+      return summary;
+    }
+
+    final category = categoryName?.trim();
+    if (category != null && category.isNotEmpty) {
+      return category;
+    }
+
+    return 'Service';
+  }
+
+  String get totalServiceHoursLabel {
+    if (totalHours > 0) {
+      return totalHours == 1
+          ? '1 hour 30 minutes'
+          : '$totalHours hours 30 minutes';
+    }
+
+    if (duration > 0) {
+      return duration == 1
+          ? '1 hour 30 minutes'
+          : '$duration hours 30 minutes';
+    }
+
+    return 'Duration unavailable';
+  }
+
+  String get bookingTimeAndDurationLabel {
+    final time = displayTimeLabel.trim();
+    final durationLabel = totalServiceHoursLabel;
+
+    if (time == 'Time unavailable') {
+      return durationLabel;
+    }
+
+    return '$time • $durationLabel';
+  }
+
+  String get locationLabel {
+    final cityValue = city?.trim() ?? '';
+    final pinValue = pinCode?.trim() ?? '';
+
+    if (cityValue.isNotEmpty && pinValue.isNotEmpty) {
+      return '$cityValue, $pinValue';
+    }
+    if (cityValue.isNotEmpty) {
+      return cityValue;
+    }
+    if (pinValue.isNotEmpty) {
+      return pinValue;
+    }
+
+    final locationValue = location?.trim() ?? '';
+    if (locationValue.isNotEmpty) {
+      return locationValue;
+    }
+
+    return 'Location unavailable';
+  }
+
+  bool get hasHelperInfo => helper != null;
+
+  String get helperPhoneLabel {
+    final phoneValue = helper?.phone?.trim() ?? '';
+    return phoneValue.isEmpty ? 'Phone unavailable' : phoneValue;
+  }
 
   String get paymentStatusLabel =>
       payment == null ? 'Unknown' : _toTitleCase(payment!.status);

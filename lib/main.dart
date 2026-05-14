@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'app/utils/app_navigator.dart';
 import 'app/utils/app_toast.dart';
 import 'routes/app_router.dart';
 
@@ -18,6 +19,7 @@ class HelperApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Helperr4u',
       scaffoldMessengerKey: AppToast.messengerKey,
+      navigatorKey: AppNavigator.navigatorKey,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF00D09C)),
         useMaterial3: true,
